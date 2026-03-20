@@ -1,6 +1,20 @@
 require('dotenv').config();
 const express    = require('express');
-const Database   = require('better-sqlite3');
+const { Database: _WasmDB } = require('node-sqlite3-wasm');
+// Shim: aceita args variádicos como better-sqlite3
+function Database(path) {
+  const db = new _WasmDB(path);
+  const _prep = db.prepare.bind(db);
+  db.prepare = (sql) => {
+    const s = _prep(sql);
+    const patch = (fn) => (...a) => fn(a.length > 1 ? a : a[0]);
+    s.run = patch(s.run.bind(s));
+    s.get = patch(s.get.bind(s));
+    s.all = patch(s.all.bind(s));
+    return s;
+  };
+  return db;
+}
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
@@ -21,8 +35,8 @@ if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 // ── Banco de dados ────────────────────────────────────────────────────────────
 const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS usuarios (
