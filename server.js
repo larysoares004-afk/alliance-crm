@@ -234,6 +234,16 @@ app.post('/api/auth/trocar-senha', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Editar próprio perfil (nome + email)
+app.put('/api/auth/me', auth, (req, res) => {
+  const { nome, email } = req.body;
+  if (!nome || nome.trim().length < 2) return res.status(400).json({ error: 'Nome inválido' });
+  // Adicionar coluna email se não existir
+  try { db.exec("ALTER TABLE usuarios ADD COLUMN email TEXT DEFAULT ''"); } catch(e) {}
+  db.prepare("UPDATE usuarios SET nome=?, email=? WHERE id=?").run(nome.trim(), email||'', req.user.id);
+  res.json({ ok: true });
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // USUÁRIOS
 // ════════════════════════════════════════════════════════════════════════════════

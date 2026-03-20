@@ -369,13 +369,17 @@ select.inp{cursor:pointer}
 
 /* Hamburguer — escondido no desktop */
 #menuToggle{
-  display:none;position:fixed;top:10px;left:10px;z-index:300;
-  width:42px;height:42px;border-radius:12px;
+  display:none;position:fixed;
+  top:max(10px, env(safe-area-inset-top, 10px));
+  left:max(10px, env(safe-area-inset-left, 10px));
+  z-index:300;
+  width:44px;height:44px;border-radius:12px;
   background:#16a34a;border:none;
   box-shadow:0 2px 12px rgba(22,163,74,.35);
   align-items:center;justify-content:center;
   cursor:pointer;flex-direction:column;gap:5px;
   touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
 }
 #menuToggle span{display:block;width:22px;height:2px;background:#fff;border-radius:2px;transition:all .3s ease}
 #menuToggle.open span:nth-child(1){transform:rotate(45deg) translate(5px,5px)}
@@ -384,10 +388,10 @@ select.inp{cursor:pointer}
 #sbOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;backdrop-filter:blur(3px)}
 
 /* ── Tablet (≤768px) ─────────────────────────────────────── */
-@media(max-width:768px){
+@media(max-width:900px){
 
   /* Hamburguer visível */
-  #menuToggle{display:flex}
+  #menuToggle{display:flex !important}
 
   /* Sidebar: drawer lateral */
   #sb{
@@ -695,7 +699,7 @@ select.inp{cursor:pointer}
   <div class="hdr-r">
     <button class="bell-btn"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell-dot"></span></button>
     <div class="hdr-div"></div>
-    <div class="usr-row" onclick="goTo('config')">
+    <div class="usr-row" onclick="abrirModalPerfil()" title="Meu Perfil" style="cursor:pointer">
       <div><div class="usr-name" id="hdrNome">Lary Soares</div><div class="usr-role" id="hdrCargo">Administrador</div></div>
       <div class="usr-av" id="usrAvatar">L</div>
     </div>
@@ -1142,6 +1146,50 @@ select.inp{cursor:pointer}
 <!-- ═══ MODAIS ═══════════════════════════════════════════════════ -->
 
 <!-- ADD LEAD -->
+<!-- ═══════════════ MODAL MEUS DADOS / PERFIL ═══════════════ -->
+<div class="overlay" id="perfilModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hdr">
+      <span class="modal-title">👤 Meus Dados</span>
+      <button class="close-btn" onclick="closeModal('perfilModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:20px">
+        <div class="usr-av" id="perfilAvatar" style="width:64px;height:64px;font-size:26px;border-radius:20px">L</div>
+        <div style="font-size:11px;color:var(--z400)" id="perfilRoleLabel">Administrador</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label class="lbl">Nome completo</label>
+          <input type="text" id="perfilNome" class="inp" placeholder="Seu nome">
+        </div>
+        <div>
+          <label class="lbl">E-mail</label>
+          <input type="email" id="perfilEmail" class="inp" placeholder="seuemail@exemplo.com">
+        </div>
+        <hr style="border:none;border-top:1px solid var(--z100);margin:4px 0">
+        <div style="font-size:12px;font-weight:700;color:var(--z600);margin-bottom:-6px">🔐 Trocar Senha</div>
+        <div>
+          <label class="lbl">Senha atual</label>
+          <input type="password" id="perfilSenhaAtual" class="inp" placeholder="••••••••">
+        </div>
+        <div>
+          <label class="lbl">Nova senha</label>
+          <input type="password" id="perfilNovaSenha" class="inp" placeholder="Mínimo 6 caracteres">
+        </div>
+        <div>
+          <label class="lbl">Confirmar nova senha</label>
+          <input type="password" id="perfilConfirmarSenha" class="inp" placeholder="Repita a nova senha">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('perfilModal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarPerfil()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="addLeadModal">
   <div class="modal">
     <div class="modal-hdr"><span class="modal-title">Novo Lead</span><button class="close-btn" onclick="closeModal('addLeadModal')">✕</button></div>
@@ -4370,6 +4418,70 @@ function copiarLinkLanding() {
 }
 
 // ══════════════════════════ MOBILE MENU ══════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// MEUS DADOS — editar perfil do usuário logado
+// ══════════════════════════════════════════════════════════════════════════════
+
+function abrirModalPerfil() {
+  // Preencher com dados atuais
+  const u = currentUser;
+  if (!u) return;
+  const nomEl   = document.getElementById('perfilNome');
+  const emEl    = document.getElementById('perfilEmail');
+  const avEl    = document.getElementById('perfilAvatar');
+  const rlEl    = document.getElementById('perfilRoleLabel');
+  if (nomEl) nomEl.value  = u.nome || '';
+  if (emEl)  emEl.value   = u.email || '';
+  if (avEl)  avEl.textContent = (u.nome||'?').charAt(0).toUpperCase();
+  if (rlEl)  rlEl.textContent = u.cargo || u.role || '';
+  // Limpar campos de senha
+  ['perfilSenhaAtual','perfilNovaSenha','perfilConfirmarSenha'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  openModal('perfilModal');
+}
+
+async function salvarPerfil() {
+  const nome           = document.getElementById('perfilNome')?.value?.trim();
+  const email          = document.getElementById('perfilEmail')?.value?.trim();
+  const senhaAtual     = document.getElementById('perfilSenhaAtual')?.value;
+  const novaSenha      = document.getElementById('perfilNovaSenha')?.value;
+  const confirmarSenha = document.getElementById('perfilConfirmarSenha')?.value;
+
+  if (!nome) { toast('Nome não pode ficar vazio', 'error'); return; }
+
+  let erros = [];
+
+  // 1. Salvar nome/email
+  try {
+    await api('PUT', '/api/auth/me', { nome, email: email||'' });
+    // Atualizar currentUser localmente
+    currentUser.nome  = nome;
+    currentUser.email = email;
+    // Atualizar header
+    const hdrNome = document.getElementById('hdrNome');
+    const usrAv   = document.getElementById('usrAvatar');
+    if (hdrNome) hdrNome.textContent = nome;
+    if (usrAv)   usrAv.textContent   = nome.charAt(0).toUpperCase();
+  } catch(e) { erros.push('Nome/Email: ' + e.message); }
+
+  // 2. Trocar senha (só se preencheu campos de senha)
+  if (senhaAtual || novaSenha || confirmarSenha) {
+    if (!senhaAtual) { erros.push('Informe a senha atual'); }
+    else if (!novaSenha || novaSenha.length < 6) { erros.push('Nova senha precisa ter mínimo 6 caracteres'); }
+    else if (novaSenha !== confirmarSenha) { erros.push('Senhas não conferem'); }
+    else {
+      try {
+        await api('POST', '/api/auth/trocar-senha', { senhaAtual, novaSenha });
+      } catch(e) { erros.push('Senha: ' + e.message); }
+    }
+  }
+
+  if (erros.length > 0) { toast(erros.join(' | '), 'error'); return; }
+  toast('Dados salvos com sucesso! ✅', 'success');
+  closeModal('perfilModal');
+}
+
 function toggleMobileMenu(){
   const sb  = document.getElementById('sb');
   const ov  = document.getElementById('sbOverlay');
@@ -4391,6 +4503,22 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+
+// ── Fallback JS para garantir hambúrguer em qualquer mobile/iOS ───────────────
+(function forcarHamburguer() {
+  function checarMobile() {
+    const isMobile = window.innerWidth <= 900 ||
+      /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+    const btn = document.getElementById('menuToggle');
+    if (btn) btn.style.display = isMobile ? 'flex' : '';
+  }
+  // Rodar ao carregar e ao redimensionar
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checarMobile);
+  } else { checarMobile(); }
+  window.addEventListener('resize', checarMobile);
+  window.addEventListener('orientationchange', checarMobile);
+})();
 
 // ══════════════════════════ CSS ═══════════════════════════════════════════════
 const styleEl=document.createElement('style');
