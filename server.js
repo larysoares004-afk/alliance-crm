@@ -61,6 +61,7 @@ db.exec(`
     oculos          TEXT DEFAULT 'Sim',
     valor           REAL DEFAULT 20,
     os              TEXT,
+    unidade         TEXT DEFAULT 'Conquista',
     criado_em       TEXT DEFAULT (datetime('now','localtime')),
     atualizado_em   TEXT DEFAULT (datetime('now','localtime'))
   );
@@ -109,6 +110,9 @@ db.exec(`
     valor TEXT
   );
 `);
+
+// ── Migrações de schema ───────────────────────────────────────────────────────
+try { db.exec("ALTER TABLE leads ADD COLUMN unidade TEXT DEFAULT 'Conquista'"); } catch(e) { /* já existe */ }
 
 // ── Usuários padrão ───────────────────────────────────────────────────────────
 const DEFAULTS = [
@@ -288,8 +292,9 @@ app.post('/api/leads/public', (req, res) => {
   const d = req.body;
   if (!d.nome) return res.status(400).json({ error: 'Nome obrigatório' });
   const count = db.prepare('SELECT COUNT(*) as c FROM leads').get().c;
-  const r = db.prepare('INSERT INTO leads (nome,telefone,origem,status,motivo,oculos,valor,os) VALUES (?,?,?,?,?,?,?,?)')
-    .run(d.nome, d.telefone||'', d.origem||'Landing Page', 'LEAD', d.motivo||'', d.oculos||'Sim', d.valor||20, String(1000+count+1));
+  const unidade = d.unidade || d.localidade || 'Conquista';
+  const r = db.prepare('INSERT INTO leads (nome,telefone,origem,status,motivo,oculos,valor,os,unidade) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(d.nome, d.telefone||'', d.origem||'Landing Page', 'LEAD', d.motivo||'', d.oculos||'Sim', d.valor||20, String(1000+count+1), unidade);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
