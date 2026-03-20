@@ -27,89 +27,87 @@ const fs         = require('fs');
 const app  = express();
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'alliance_crm_secret_2024_troque_isto';
-const DB_PATH    = process.env.DB_PATH || (process.platform === 'win32' ? './alliance.db' : '/data/alliance.db');
+const DB_PATH    = process.env.DB_PATH || (process.platform === 'win32' ? path.join(__dirname, 'alliance.db') : '/data/alliance.db');
 
 // ── Garantir diretório do banco ───────────────────────────────────────────────
 const dbDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 // ── Banco de dados ────────────────────────────────────────────────────────────
+// Limpa lock file órfão no Windows (gerado por node-sqlite3-wasm após crash)
+if (process.platform === 'win32') {
+  try { fs.rmSync(DB_PATH + '.lock', { recursive: true, force: true }); } catch(e) {}
+}
 const db = new Database(DB_PATH);
 try { db.exec('PRAGMA foreign_keys = ON'); } catch(e) { /* PRAGMA opcional */ }
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS usuarios (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome         TEXT NOT NULL,
-    usuario      TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    senha_hash   TEXT NOT NULL,
-    cargo        TEXT DEFAULT 'Atendente',
-    role         TEXT DEFAULT 'atendente',
-    setor        TEXT DEFAULT 'recepcao',
-    ativo        INTEGER DEFAULT 1,
-    criado_em    TEXT DEFAULT (datetime('now','localtime')),
-    ultimo_acesso TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS leads (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome            TEXT NOT NULL,
-    telefone        TEXT,
-    origem          TEXT DEFAULT 'Manual',
-    status          TEXT DEFAULT 'LEAD',
-    motivo          TEXT,
-    oculos          TEXT DEFAULT 'Sim',
-    valor           REAL DEFAULT 20,
-    os              TEXT,
-    unidade         TEXT DEFAULT 'Conquista',
-    criado_em       TEXT DEFAULT (datetime('now','localtime')),
-    atualizado_em   TEXT DEFAULT (datetime('now','localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS vendas (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id         INTEGER,
-    cliente_nome    TEXT,
-    valor           REAL NOT NULL,
-    pagamento       TEXT DEFAULT 'PIX',
-    servico         TEXT,
-    tipo            TEXT DEFAULT 'Venda',
-    criado_por      INTEGER,
-    criado_em       TEXT DEFAULT (datetime('now','localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS agendamentos (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    lead_id         INTEGER,
-    cliente_nome    TEXT,
-    cliente_tel     TEXT,
-    servico         TEXT,
-    data            TEXT,
-    hora            TEXT,
-    status          TEXT DEFAULT 'scheduled',
-    nota            TEXT,
-    criado_em       TEXT DEFAULT (datetime('now','localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS chat_msgs (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    canal    TEXT NOT NULL,
-    autor    TEXT NOT NULL,
-    setor    TEXT,
-    texto    TEXT NOT NULL,
-    tipo     TEXT DEFAULT 'msg',
-    paciente TEXT,
-    destino  TEXT,
-    nota     TEXT,
-    lido     INTEGER DEFAULT 0,
-    criado_em TEXT DEFAULT (datetime('now','localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS config (
-    chave TEXT PRIMARY KEY,
-    valor TEXT
-  );
-`);
+// Separado em chamadas individuais — node-sqlite3-wasm não suporta multi-statement exec
+db.exec(`CREATE TABLE IF NOT EXISTS usuarios (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome         TEXT NOT NULL,
+  usuario      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  senha_hash   TEXT NOT NULL,
+  cargo        TEXT DEFAULT 'Atendente',
+  role         TEXT DEFAULT 'atendente',
+  setor        TEXT DEFAULT 'recepcao',
+  ativo        INTEGER DEFAULT 1,
+  criado_em    TEXT DEFAULT (datetime('now','localtime')),
+  ultimo_acesso TEXT
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS leads (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome            TEXT NOT NULL,
+  telefone        TEXT,
+  origem          TEXT DEFAULT 'Manual',
+  status          TEXT DEFAULT 'LEAD',
+  motivo          TEXT,
+  oculos          TEXT DEFAULT 'Sim',
+  valor           REAL DEFAULT 20,
+  os              TEXT,
+  unidade         TEXT DEFAULT 'Conquista',
+  criado_em       TEXT DEFAULT (datetime('now','localtime')),
+  atualizado_em   TEXT DEFAULT (datetime('now','localtime'))
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS vendas (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id         INTEGER,
+  cliente_nome    TEXT,
+  valor           REAL NOT NULL,
+  pagamento       TEXT DEFAULT 'PIX',
+  servico         TEXT,
+  tipo            TEXT DEFAULT 'Venda',
+  criado_por      INTEGER,
+  criado_em       TEXT DEFAULT (datetime('now','localtime'))
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS agendamentos (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id         INTEGER,
+  cliente_nome    TEXT,
+  cliente_tel     TEXT,
+  servico         TEXT,
+  data            TEXT,
+  hora            TEXT,
+  status          TEXT DEFAULT 'scheduled',
+  nota            TEXT,
+  criado_em       TEXT DEFAULT (datetime('now','localtime'))
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS chat_msgs (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  canal    TEXT NOT NULL,
+  autor    TEXT NOT NULL,
+  setor    TEXT,
+  texto    TEXT NOT NULL,
+  tipo     TEXT DEFAULT 'msg',
+  paciente TEXT,
+  destino  TEXT,
+  nota     TEXT,
+  lido     INTEGER DEFAULT 0,
+  criado_em TEXT DEFAULT (datetime('now','localtime'))
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS config (
+  chave TEXT PRIMARY KEY,
+  valor TEXT
+)`);
 
 // ── Migrações de schema ───────────────────────────────────────────────────────
 try { db.exec("ALTER TABLE leads ADD COLUMN unidade TEXT DEFAULT 'Conquista'"); } catch(e) { /* já existe */ }
