@@ -1368,9 +1368,13 @@ async function api(method, path, body) {
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
-    sessionStorage.removeItem('alliance_sess');
-    location.reload();
-    return;
+    const _s = JSON.parse(sessionStorage.getItem('alliance_sess') || 'null');
+    if (_s && _s.token) {
+      sessionStorage.removeItem('alliance_sess');
+      location.reload();
+      return;
+    }
+    throw new Error(data.error || 'Não autenticado');
   }
   if (!res.ok) throw new Error(data.error || 'Erro ' + res.status);
   return data;
@@ -1442,6 +1446,21 @@ function _executarLogin() {
   if (u) {
     entrarComUser(u, true);
     if (btn) { btn.textContent = 'Entrar'; btn.style.background = '#16a34a'; }
+    // Busca token real do backend em segundo plano (sem bloquear UX)
+    fetch('/api/auth/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      credentials:'include', body: JSON.stringify({usuario:usuario,senha:senha})
+    }).then(function(r){return r.json();}).then(function(d){
+      if(d.ok && d.token){
+        try{
+          var s=JSON.parse(sessionStorage.getItem('alliance_sess')||'{}');
+          s.token=d.token; s.offline=false;
+          sessionStorage.setItem('alliance_sess',JSON.stringify(s));
+          currentUser=d.user;
+          currentUser.permissoes=d.permissoes||PERMISSOES[d.user.role]||[];
+        }catch(e){}
+      }
+    }).catch(function(){});
     try { iniciarSistema(); } catch(e) { console.error(e); }
     return;
   }
@@ -1529,6 +1548,7 @@ function checkSession() {
 
 // ── Sincronizar dados do backend para state local ─────────────────────────────
 async function sincronizarDados() {
+  if (!_getAuthToken()) return; // sem token JWT, não tenta chamar APIs
   try {
     const [leadsRaw, vendasRaw, agendRaw] = await Promise.all([
       api('GET', '/api/leads'),

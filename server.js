@@ -27,7 +27,7 @@ const fs         = require('fs');
 const app  = express();
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'alliance_crm_secret_2024_troque_isto';
-const DB_PATH    = process.env.DB_PATH || '/data/alliance.db';
+const DB_PATH    = process.env.DB_PATH || (process.platform === 'win32' ? './alliance.db' : '/data/alliance.db');
 
 // ── Garantir diretório do banco ───────────────────────────────────────────────
 const dbDir = path.dirname(DB_PATH);
@@ -35,8 +35,7 @@ if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 // ── Banco de dados ────────────────────────────────────────────────────────────
 const db = new Database(DB_PATH);
-db.exec('PRAGMA journal_mode = WAL');
-db.exec('PRAGMA foreign_keys = ON');
+try { db.exec('PRAGMA foreign_keys = ON'); } catch(e) { /* PRAGMA opcional */ }
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS usuarios (
