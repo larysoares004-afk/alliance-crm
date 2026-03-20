@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exame de Vista — R$ 20,00</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--blue:#2563eb;--blue-dk:#1e40af;--blue-lt:#dbeafe;--green:#10b981;--green-dk:#0da371;--slate50:#f8fafc;--slate100:#f1f5f9;--slate200:#e2e8f0;--slate400:#94a3b8;--slate500:#64748b;--slate600:#475569;--slate700:#334155;--slate800:#1e293b;--slate900:#0f172a}
+body{font-family:'Inter',sans-serif;background:#fff;color:var(--slate900);-webkit-font-smoothing:antialiased;min-height:100vh}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideLeft{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1) rotate(2deg)}}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes confetti-fall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+@keyframes checkPop{0%{transform:scale(0)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes shimmer{0%{opacity:.6}50%{opacity:1}100%{opacity:.6}}
+.anim-in{animation:fadeIn .35s ease both}
+.anim-slide-left{animation:slideLeft .3s ease both}
+.anim-slide-right{animation:slideRight .3s ease both}
+.banner{background:var(--blue);color:#fff;padding:10px 16px;text-align:center}
+.banner-main{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;justify-content:center;gap:8px}
+.banner-sub{font-size:9px;color:#bfdbfe;font-weight:700;text-align:center;margin-top:4px}
+.main-wrap{max-width:440px;margin:0 auto;padding:16px}
+.urgency-badge{display:inline-block;background:#dc2626;color:#fff;padding:5px 14px;border-radius:99px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;box-shadow:0 4px 14px rgba(220,38,38,.3);animation:pulse 3s ease infinite}
+.hero{text-align:center;margin-bottom:16px}
+.hero h1{font-size:22px;font-weight:900;color:var(--slate900);line-height:1.25;margin-top:10px;margin-bottom:8px}
+.price-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px}
+.price-old{font-size:15px;color:var(--slate400);text-decoration:line-through;font-weight:600}
+.price-new{font-size:44px;font-weight:900;color:var(--blue);line-height:1}
+.price-tag{font-size:10px;color:#ef4444;font-weight:800;display:flex;align-items:center;justify-content:center;gap:4px}
+.hero-sub{font-size:10px;color:var(--slate500);margin-top:6px}
+/* Form card */
+.form-card{background:#fff;border:1px solid var(--slate100);border-radius:28px;padding:20px;box-shadow:0 24px 60px rgba(37,99,235,.08)}
+.trust-row{display:flex;align-items:center;justify-content:center;gap:16px;background:var(--slate50);border:1px solid var(--slate100);border-radius:14px;padding:10px;margin-bottom:20px}
+.trust-item{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--slate400);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.form-title{font-size:17px;font-weight:900;text-align:center;margin-bottom:20px;color:var(--slate800)}
+/* Progress */
+.progress-row{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:32px;position:relative}
+.prog-line{position:absolute;top:18px;left:0;right:0;height:2px;background:var(--slate100);z-index:0}
+.prog-fill{position:absolute;top:18px;left:0;height:2px;background:var(--blue);transition:width .5s ease;z-index:1}
+.prog-step{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:2}
+.prog-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;transition:all .3s}
+.prog-dot.active{background:var(--blue);color:#fff;box-shadow:0 0 0 4px rgba(37,99,235,.15)}
+.prog-dot.done{background:var(--blue);color:#fff}
+.prog-dot.pending{background:var(--slate50);color:var(--slate300);border:2px solid var(--slate100)}
+.prog-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--slate400)}
+.prog-lbl.active{color:var(--blue)}
+/* Step content */
+.step-content{min-height:380px}
+.step-panel{display:none;animation:slideLeft .3s ease both}
+.step-panel.on{display:block}
+.step-panel.back{animation:slideRight .3s ease both}
+/* Label */
+.field-lbl{display:block;font-size:13px;font-weight:700;color:var(--slate700);margin-bottom:8px}
+/* Input */
+.inp-wrap{position:relative;margin-bottom:20px}
+.inp-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--slate400)}
+.inp-field{width:100%;padding:14px 14px 14px 44px;background:var(--slate50);border:2px solid var(--slate200);border-radius:16px;font-family:inherit;font-size:14px;color:var(--slate900);outline:none;transition:all .2s}
+.inp-field:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 4px rgba(37,99,235,.1)}
+.inp-err{font-size:10px;color:#ef4444;font-weight:700;margin-top:4px;display:none}
+/* City button */
+.city-btn{width:100%;padding:14px;border-radius:16px;border:2px solid var(--slate100);background:var(--slate50);font-family:inherit;font-size:13px;font-weight:700;color:var(--slate600);cursor:pointer;display:flex;align-items:center;gap:10px;transition:all .2s;margin-bottom:10px}
+.city-btn.sel{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+.city-btn:hover{border-color:var(--slate200);background:#fff}
+/* Option button */
+.opt-btn{width:100%;padding:14px;border-radius:16px;border:2px solid var(--slate100);background:var(--slate50);font-family:inherit;font-size:13px;font-weight:600;color:var(--slate600);cursor:pointer;display:flex;align-items:center;gap:10px;transition:all .2s;text-align:left;margin-bottom:10px}
+.opt-btn.sel{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+.opt-chk{width:22px;height:22px;border-radius:50%;border:2px solid var(--slate300);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.opt-btn.sel .opt-chk{background:var(--blue);border-color:var(--blue)}
+/* Glasses grid */
+.glasses-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.glass-opt{padding:16px;border:2px solid var(--slate100);border-radius:16px;background:var(--slate50);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:700;color:var(--slate600);transition:all .2s}
+.glass-opt.sel{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+.glass-emoji{font-size:28px}
+/* Calendar */
+.cal-wrap{background:var(--slate50);border:1px solid var(--slate100);border-radius:24px;padding:16px}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:0 4px}
+.cal-nav-btn{width:28px;height:28px;border-radius:50%;border:none;background:var(--slate200);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s}
+.cal-nav-btn:hover{background:var(--slate300)}
+.cal-month{font-size:13px;font-weight:700;color:var(--slate700);text-transform:capitalize}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-dow{text-align:center;font-size:9px;font-weight:700;color:var(--slate400);padding:4px 0;text-transform:uppercase}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;color:var(--slate700);border:none;background:none;font-family:inherit}
+.cal-day:hover:not(:disabled){background:var(--slate200)}
+.cal-day.sel{background:var(--blue);color:#fff}
+.cal-day:disabled{opacity:.2;cursor:not-allowed}
+.cal-sel-display{margin-top:12px;padding:10px;background:var(--blue-lt);border-radius:12px;text-align:center;font-size:11px;font-weight:700;color:var(--blue);display:none}
+/* Time slots */
+.time-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.time-btn{padding:11px 4px;border:2px solid var(--slate100);border-radius:12px;background:var(--slate50);font-family:inherit;font-size:11px;font-weight:700;color:var(--slate600);cursor:pointer;transition:all .15s}
+.time-btn.sel{background:var(--blue);border-color:var(--blue);color:#fff}
+.time-btn:hover:not(:disabled){border-color:var(--slate300);background:#fff}
+.time-btn:disabled{opacity:.2;cursor:not-allowed}
+/* Nav buttons */
+.btn-row{display:flex;gap:10px;margin-top:20px}
+.btn-back{padding:14px 16px;border-radius:16px;border:none;background:var(--slate100);color:var(--slate600);cursor:pointer;font-size:18px;transition:all .2s;flex-shrink:0}
+.btn-back:hover{background:var(--slate200)}
+.btn-next{flex:1;padding:15px;border-radius:16px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:13px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .2s;box-shadow:0 6px 20px rgba(37,99,235,.3)}
+.btn-next:hover{background:var(--blue-dk);transform:translateY(-1px)}
+.btn-next:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-full{width:100%;padding:16px;border-radius:16px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:14px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .2s;box-shadow:0 6px 20px rgba(37,99,235,.3)}
+.btn-full:hover{background:var(--blue-dk);transform:translateY(-1px)}
+.btn-full:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-green-full{background:var(--green);box-shadow:0 6px 20px rgba(16,185,129,.3)}
+.btn-green-full:hover{background:var(--green-dk)}
+/* Footer stats */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}
+.stat-card{background:#fff;border:1px solid var(--slate200);border-radius:20px;padding:16px;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.06)}
+.stat-num{font-size:28px;font-weight:900;color:var(--blue)}
+.stat-lbl{font-size:9px;font-weight:700;color:var(--slate400);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+/* Trust section */
+.trust-section{margin-top:48px;padding:0 4px}
+.trust-title{font-size:24px;font-weight:900;color:#002855;text-align:center;line-height:1.3;margin-bottom:8px}
+.trust-sub{font-size:13px;color:var(--slate500);text-align:center;margin-bottom:24px;line-height:1.6}
+.trust-card{background:#fff;border:1px solid var(--slate100);border-radius:24px;padding:20px;display:flex;gap:14px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.04);transition:all .2s}
+.trust-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1);transform:translateY(-2px)}
+.trust-ico{width:52px;height:52px;background:var(--blue-lt);border-radius:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px}
+.trust-name{font-size:15px;font-weight:800;color:#002855;margin-bottom:4px}
+.trust-desc{font-size:12px;color:var(--slate500);line-height:1.6}
+/* Urgency block */
+.urgency-block{text-align:center;padding:48px 16px;background:var(--slate50);border-radius:48px;border:1px solid rgba(226,232,240,.5);margin-top:40px}
+.urgency-block h2{font-size:22px;font-weight:900;color:var(--slate900);margin-bottom:10px}
+.urgency-block p{font-size:13px;color:var(--slate500);max-width:280px;margin:0 auto}
+/* Confirmation screen */
+.confirm-screen{min-height:100vh;background:var(--slate50);display:none;flex-direction:column;align-items:center}
+.confirm-screen.on{display:flex}
+.confirm-hdr{width:100%;background:var(--green);padding:64px 24px 80px;text-align:center;position:relative;overflow:hidden}
+.confirm-hdr-circle1{position:absolute;top:30px;left:30px;width:12px;height:12px;background:rgba(255,255,255,.2);border-radius:50%}
+.confirm-hdr-circle2{position:absolute;top:60px;right:60px;width:10px;height:10px;background:rgba(255,255,255,.15);border-radius:50%}
+.confirm-check{width:72px;height:72px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 32px rgba(0,0,0,.1);animation:checkPop .6s cubic-bezier(.34,1.56,.64,1) both}
+.confirm-check svg{width:36px;height:36px;color:var(--green)}
+.confirm-hdr h2{font-size:24px;font-weight:800;color:#fff;margin-bottom:6px}
+.confirm-hdr p{font-size:13px;color:rgba(255,255,255,.85)}
+.confirm-card{width:100%;max-width:440px;padding:0 16px;margin-top:-56px;position:relative;z-index:2;margin-bottom:24px}
+.confirm-inner{background:#fff;border-radius:28px;box-shadow:0 12px 40px rgba(0,0,0,.12);overflow:hidden;border:1px solid var(--slate100)}
+.confirm-section{padding:20px 24px}
+.confirm-section-title{font-size:9px;font-weight:700;color:var(--slate400);text-transform:uppercase;letter-spacing:.8px;margin-bottom:16px}
+.confirm-row{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.confirm-ico{width:40px;height:40px;background:#ecfdf5;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px}
+.confirm-field-lbl{font-size:9px;font-weight:700;color:var(--slate400);text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px}
+.confirm-field-val{font-size:15px;font-weight:800;color:var(--slate800);text-transform:capitalize}
+.confirm-next-section{background:var(--slate50);border-top:1px solid var(--slate100);padding:20px 24px}
+.confirm-step{display:flex;gap:12px;margin-bottom:16px}
+.confirm-step-num{width:24px;height:24px;background:var(--green);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0}
+.confirm-step-text{font-size:12px;color:var(--slate600);line-height:1.6}
+.confirm-step-text strong{color:var(--slate800);font-weight:700}
+.confirm-footer{width:100%;max-width:440px;padding:0 16px 32px}
+.confirm-protect{display:flex;align-items:center;justify-content:center;gap:6px;font-size:9px;color:var(--slate400);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.btn-confirm-final{width:100%;padding:18px;border:none;background:var(--green);color:#fff;border-radius:18px;font-family:inherit;font-size:15px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 24px rgba(16,185,129,.3);transition:all .2s}
+.btn-confirm-final:hover{background:var(--green-dk);transform:translateY(-1px)}
+.btn-restart{width:100%;padding:10px;background:none;border:none;color:var(--slate400);font-family:inherit;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;cursor:pointer;margin-top:10px;transition:color .2s}
+.btn-restart:hover{color:var(--slate600)}
+/* Confetti */
+.confetti-container{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;overflow:hidden}
+.confetti-piece{position:absolute;width:8px;height:8px;border-radius:2px;animation:confetti-fall 3s ease forwards}
+/* Sending indicator */
+.sending-badge{background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 12px;font-size:10px;font-weight:700;text-align:center;margin-top:8px;display:none}
+</style>
+</head>
+<body>
+
+<!-- MAIN FORM SCREEN -->
+<div id="formScreen">
+  <!-- Banner -->
+  <div class="banner">
+    <div class="banner-main">🔥 Oferta Limitada – Vagas se esgotando!</div>
+    <div class="banner-sub">⚡ 12 pessoas agendaram nas últimas 2 horas</div>
+  </div>
+
+  <div class="main-wrap">
+    <!-- Hero -->
+    <div class="hero anim-in">
+      <div class="urgency-badge">⚠️ Últimas Vagas com Desconto</div>
+      <h1>Garanta seu Exame de Vista por Apenas</h1>
+      <div class="price-row">
+        <span class="price-old">R$ 120,00</span>
+        <span class="price-new">R$ 20,00</span>
+      </div>
+      <div class="price-tag">⚡ Oferta por Tempo Limitado</div>
+      <p class="hero-sub">Outros cobram caro. Aqui é <strong style="color:var(--slate700)">preço popular</strong> com qualidade profissional!</p>
+    </div>
+
+    <!-- Form Card -->
+    <div class="form-card anim-in" style="animation-delay:.1s">
+      <div class="trust-row">
+        <div class="trust-item">🛡️ 100% Seguro</div>
+        <div class="trust-item">⭐ 5.0 Avaliação</div>
+      </div>
+      <h2 class="form-title">Preencha e garanta sua vaga!</h2>
+
+
+      <!-- Progress -->
+      <div class="progress-row">
+        <div class="prog-line"></div>
+        <div class="prog-fill" id="progFill" style="width:0%"></div>
+        <div class="prog-step">
+          <div class="prog-dot active" id="dot0">1</div>
+          <div class="prog-lbl active" id="lbl0">Dados</div>
+        </div>
+        <div class="prog-step">
+          <div class="prog-dot pending" id="dot1">2</div>
+          <div class="prog-lbl" id="lbl1">Necessidades</div>
+        </div>
+        <div class="prog-step">
+          <div class="prog-dot pending" id="dot2">3</div>
+          <div class="prog-lbl" id="lbl2">Agenda</div>
+        </div>
+      </div>
+
+      <div class="step-content">
+        <!-- STEP 0: Dados -->
+        <div class="step-panel on" id="step0">
+          <form id="mainForm" autocomplete="on" onsubmit="return false" style="display:contents">
+          <div>
+            <label class="field-lbl">Seu nome completo <span style="font-size:9px;background:#eff6ff;color:#2563eb;padding:2px 6px;border-radius:4px;font-weight:700;margin-left:4px">💡 Toque para usar dados salvos</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">👤</span>
+              <input type="text" id="fNome" class="inp-field" placeholder="Digite seu nome"
+                autocomplete="name" inputmode="text" name="name"
+                oninput="this.value=this.value.replace(/[^a-zA-ZÀ-ÿ\s]/g,'')">
+            </div>
+          </div>
+          <div>
+            <label class="field-lbl">WhatsApp para confirmação</label>
+            <div class="inp-wrap">
+              <span class="inp-icon">📱</span>
+              <input type="tel" id="fTel" class="inp-field" placeholder="(11) 91234-5678"
+                autocomplete="tel" inputmode="tel" name="tel"
+                oninput="formatTel(this)" maxlength="15">
+              <div class="inp-err" id="telErr">Apenas celular (começando com 9)</div>
+            </div>
+          </div>
+          <div>
+            <label class="field-lbl">Selecione sua cidade *</label>
+            <button class="city-btn" id="cityVit" onclick="selectCity('Vitória da Conquista')">
+              <span>📍</span> Vitória da Conquista
+            </button>
+            <button class="city-btn" id="cityFei" onclick="selectCity('Feira de Santana')">
+              <span>📍</span> Feira de Santana
+            </button>
+          </div>
+          </form>
+          <button class="btn-full" id="btn0" onclick="nextStep(0)" disabled>
+            CONTINUAR ›
+          </button>
+        </div>
+
+        <!-- STEP 1: Necessidades -->
+        <div class="step-panel" id="step1">
+          <div>
+            <label class="field-lbl">Por que você precisa do exame? *</label>
+            <button class="opt-btn" id="mot0" onclick="selectMotivo('Renovar/trocar meus óculos', 0)">
+              <div class="opt-chk" id="chk0"></div>
+              <span style="font-size:18px">🔄</span> Renovar/trocar meus óculos
+            </button>
+            <button class="opt-btn" id="mot1" onclick="selectMotivo('Primeira vez usando óculos', 1)">
+              <div class="opt-chk" id="chk1"></div>
+              <span style="font-size:18px">👀</span> Primeira vez usando óculos
+            </button>
+            <button class="opt-btn" id="mot2" onclick="selectMotivo('Check-up da visão', 2)">
+              <div class="opt-chk" id="chk2"></div>
+              <span style="font-size:18px">👁️</span> Check-up da visão
+            </button>
+            <button class="opt-btn" id="mot3" onclick="selectMotivo('Estou com dificuldade para enxergar', 3)">
+              <div class="opt-chk" id="chk3"></div>
+              <span style="font-size:18px">😟</span> Estou com dificuldade para enxergar
+            </button>
+          </div>
+          <div style="margin-top:8px">
+            <label class="field-lbl">Tem interesse em comprar óculos? *</label>
+            <div class="glasses-grid">
+              <button class="glass-opt" id="ocSim" onclick="selectOculos(true)">
+                <span class="glass-emoji">👓</span>
+                <span>Sim, quero!</span>
+              </button>
+              <button class="glass-opt" id="ocNao" onclick="selectOculos(false)">
+                <span class="glass-emoji">❌</span>
+                <span>Não</span>
+              </button>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn-back" onclick="prevStep(1)">‹</button>
+            <button class="btn-next" id="btn1" onclick="nextStep(1)" disabled>
+              ESCOLHER DATA ›
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Agenda -->
+        <div class="step-panel" id="step2">
+          <div>
+            <label class="field-lbl">Selecione a data *</label>
+            <div class="cal-wrap">
+              <div class="cal-nav">
+                <button class="cal-nav-btn" onclick="calNav(-1)">‹</button>
+                <span class="cal-month" id="calMonth"></span>
+                <button class="cal-nav-btn" onclick="calNav(1)">›</button>
+              </div>
+              <div class="cal-grid" id="calDow">
+                <div class="cal-dow">D</div><div class="cal-dow">S</div><div class="cal-dow">T</div>
+                <div class="cal-dow">Q</div><div class="cal-dow">Q</div><div class="cal-dow">S</div>
+                <div class="cal-dow">S</div>
+              </div>
+              <div class="cal-grid" id="calDays"></div>
+              <div class="cal-sel-display" id="calSelDisplay"></div>
+            </div>
+          </div>
+          <div id="timeSlotsWrap" style="display:none;margin-top:16px">
+            <label class="field-lbl">Horário *</label>
+            <div class="time-grid" id="timeGrid"></div>
+          </div>
+          <div id="sendingBadge" class="sending-badge">⏳ Enviando seu agendamento...</div>
+          <div class="btn-row">
+            <button class="btn-back" onclick="prevStep(2)">‹</button>
+            <button class="btn-next" id="btn2" onclick="nextStep(2)" disabled>
+              AGENDAR POR R$ 20,00 ›
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-num">10+</div><div class="stat-lbl">Anos de experiência</div></div>
+      <div class="stat-card"><div class="stat-num">98%</div><div class="stat-lbl">Satisfação</div></div>
+    </div>
+
+    <!-- Trust cards -->
+    <div class="trust-section">
+      <h2 class="trust-title" style="margin-top:40px">Atendimento profissional com garantia de qualidade</h2>
+      <p class="trust-sub">Equipamentos <strong>modernos</strong> e <strong>profissionais qualificados</strong> para garantir o melhor cuidado com a sua visão.</p>
+      <div class="trust-card">
+        <div class="trust-ico">🛡️</div>
+        <div><div class="trust-name">Garantia de Satisfação</div><div class="trust-desc">Nosso compromisso é com a sua satisfação. Por isso, realizamos seu exame com total qualidade.</div></div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-ico">⭐</div>
+        <div><div class="trust-name">Profissionais Certificados</div><div class="trust-desc">Nossa equipe é formada por profissionais com ampla experiência e certificações em oftalmologia.</div></div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-ico">🔬</div>
+        <div><div class="trust-name">Tecnologia de Ponta</div><div class="trust-desc">Utilizamos equipamentos modernos e de última geração para diagnósticos precisos e eficazes.</div></div>
+      </div>
+      <div class="urgency-block">
+        <h2>Campanha por Tempo Limitado!</h2>
+        <p>Não perca a chance de cuidar da sua visão por um preço acessível. Garanta sua vaga agora mesmo.</p>
+      </div>
+      <div style="text-align:center;margin-top:32px;margin-bottom:40px">
+        <button class="btn-confirm-final" style="max-width:340px;margin:0 auto" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+          Agendar exame! 🎯
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRMATION SCREEN -->
+<div class="confirm-screen" id="confirmScreen">
+  <div class="confetti-container" id="confettiContainer"></div>
+  <div class="confirm-hdr">
+    <div class="confirm-hdr-circle1"></div>
+    <div class="confirm-hdr-circle2"></div>
+    <div class="confirm-check">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2>Agendamento Confirmado!</h2>
+    <p>Seu exame de vista foi agendado com sucesso</p>
+  </div>
+  <div class="confirm-card">
+    <div class="confirm-inner">
+      <div class="confirm-section">
+        <div class="confirm-section-title">Detalhes do Agendamento</div>
+        <div class="confirm-row">
+          <div class="confirm-ico">📅</div>
+          <div><div class="confirm-field-lbl">Data</div><div class="confirm-field-val" id="confData"></div></div>
+        </div>
+        <div class="confirm-row">
+          <div class="confirm-ico">🕐</div>
+          <div><div class="confirm-field-lbl">Horário</div><div class="confirm-field-val" id="confHorario"></div></div>
+        </div>
+        <div class="confirm-row">
+          <div class="confirm-ico">📍</div>
+          <div><div class="confirm-field-lbl">Cidade</div><div class="confirm-field-val" id="confCidade"></div></div>
+        </div>
+      </div>
+      <div class="confirm-next-section">
+        <div class="confirm-section-title">Próximos Passos</div>
+        <div class="confirm-step">
+          <div class="confirm-step-num">1</div>
+          <div class="confirm-step-text">Nossa equipe <strong>acabou de entrar em contato pelo WhatsApp</strong></div>
+        </div>
+        <div class="confirm-step">
+          <div class="confirm-step-num">2</div>
+          <div class="confirm-step-text">Compareça no dia e horário marcados com <strong>documento com foto</strong></div>
+        </div>
+        <div class="confirm-step">
+          <div class="confirm-step-num">3</div>
+          <div class="confirm-step-text">Realize seu exame de vista <strong>por apenas R$ 20,00</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="confirm-footer">
+    <div class="confirm-protect">🛡️ Seus dados estão protegidos</div>
+    <button class="btn-confirm-final" onclick="location.reload()">
+      FINALIZAR AGENDAMENTO ›
+    </button>
+    <button class="btn-restart" onclick="location.reload()">Voltar ao início</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// 4 PLANILHAS — por cidade + interesse em óculos
+//
+// Como criar as 4 planilhas:
+// 1. Acesse script.google.com e crie 4 projetos diferentes
+// 2. Cole o mesmo código do Apps Script em cada um
+// 3. Publique cada um e cole as URLs abaixo
+// ══════════════════════════════════════════════════════════════════════
+const SHEETS = {
+  // Vitória da Conquista
+  'VDC-SIM': 'https://script.google.com/macros/s/AKfycbxBL3pNi-TB0HxZd3SILtZ3HaVYvs49Xl4bgqo77xYKcdS-X62ReidZM03nrFai-q_p/exec', // VDC + Quer óculos
+  'VDC-NAO': 'https://script.google.com/macros/s/AKfycbwqfweA92G47olKyTezpSw-cTV4u-uYK_6Pcc5l0uReggUiC_hqOCdzSJ6Ne5bvZQk8VQ/exec', // VDC + Não quer óculos
+
+  // Feira de Santana
+  'FEI-SIM': 'https://script.google.com/macros/s/AKfycbxQ4xy3pxJa6bh6wLobf7-wbK3pJ1s52xdHusMQv8QtU0G7SjpsAOgCasjsVqBNv9Kq/exec', // Feira + Quer óculos
+  'FEI-NAO': 'https://script.google.com/macros/s/AKfycbw-UnsiauJwDPFnRpLjze1ho-gghcaLDm2G5kYkd0lkKQSZyd3BxTImaTfullsAmxID/exec', // Feira + Não quer óculos
+};
+
+// ── Estado ──────────────────────────────────────────────────────────
+let form = { nome:'', tel:'', cidade:'', motivo:'', oculos:null, data:null, horario:null };
+let calDate = new Date(); calDate.setDate(1);
+const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// ══════════════════════════════════════════════════════════════════════
+// MELHORIA 1 — Horários aleatórios por sessão (8:00–17:30)
+// Cada visitante vê uma combinação diferente de slots disponíveis
+// ══════════════════════════════════════════════════════════════════════
+function buildSessionSlots() {
+  // Gera todos os slots de 8:00 a 17:30 em intervalos de 15min
+  const all = [];
+  for (let h = 8; h <= 17; h++) {
+    const maxMin = (h === 17) ? 30 : 45;
+    for (let m = 0; m <= maxMin; m += 15) {
+      all.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    }
+  }
+  // Remove 30–50% dos slots aleatoriamente para simular horários ocupados
+  const seed = Date.now() % 1000; // muda por sessão
+  const removeCount = Math.floor(all.length * (0.30 + (seed % 20) / 100));
+  const indices = new Set();
+  let rng = seed;
+  while (indices.size < removeCount) {
+    rng = (rng * 1664525 + 1013904223) & 0xffffffff;
+    const idx = Math.abs(rng) % all.length;
+    // Nunca remove o primeiro e o último disponível
+    if (idx > 0 && idx < all.length - 1) indices.add(idx);
+  }
+  return all.filter((_,i) => !indices.has(i));
+}
+const SESSION_SLOTS = buildSessionSlots(); // calculado uma vez por acesso
+
+// ══════════════════════════════════════════════════════════════════════
+// ENVIO PARA O CRM (Alliance) — integração direta, sem autenticação
+// ══════════════════════════════════════════════════════════════════════
+function sendToCRM() {
+  fetch('/api/leads/public', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nome:     form.nome,
+      telefone: form.tel,
+      origem:   'Landing Page',
+      motivo:   form.motivo,
+      oculos:   form.oculos ? 'Sim' : 'Não',
+      valor:    20,
+      unidade:  form.cidade,
+    }),
+  }).catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ENVIO PARA SHEETS — direciona conforme interesse em óculos
+// ══════════════════════════════════════════════════════════════════════
+function sendToSheets() {
+  // Escolhe a planilha certa: cidade + interesse em óculos
+  const cidKey = form.cidade === 'Vitória da Conquista' ? 'VDC' : 'FEI';
+  const ocKey  = form.oculos ? 'SIM' : 'NAO';
+  const url = SHEETS[cidKey + '-' + ocKey];
+  const payload = {
+    nome: form.nome,
+    whatsapp: form.tel,
+    cidade: form.cidade,
+    motivo: form.motivo,
+    interesseOculos: form.oculos ? 'Sim' : 'Nao',
+    data: form.data ? fmtDate(form.data) : '',
+    horario: form.horario || '',
+    criadoEm: new Date().toLocaleString('pt-BR'),
+    status: 'LEAD',
+  };
+
+  // Método 1 — POST no-cors
+  fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+
+  // Método 2 — GET fallback
+  const p = new URLSearchParams();
+  Object.entries(payload).forEach(([k,v]) => p.append(k, String(v)));
+  const img = new Image();
+  img.src = url + '?' + p.toString();
+}
+
+// ── Formatação ───────────────────────────────────────────────────────
+function formatTel(el) {
+  let v = el.value.replace(/\D/g,'');
+  if(v.length > 11) v = v.slice(0,11);
+  let fmt = '';
+  if(v.length <= 2) fmt = v.length ? '('+v : '';
+  else if(v.length <= 7) fmt = `(${v.slice(0,2)}) ${v.slice(2)}`;
+  else fmt = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+  el.value = fmt;
+  form.tel = v;
+  const err = document.getElementById('telErr');
+  if(v.length > 2 && v[2] !== '9') err.style.display='block';
+  else err.style.display='none';
+  validateStep0();
+}
+
+function fmtDate(d) {
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+function fmtDateLong(d) {
+  const days = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+  return `${days[d.getDay()]}, ${d.getDate()} de ${MONTHS_PT[d.getMonth()].toLowerCase()}`;
+}
+
+// ── Step 0 ───────────────────────────────────────────────────────────
+function validateStep0() {
+  const ok = form.nome.trim().length >= 2
+          && form.tel.length === 11
+          && form.tel[2] === '9'
+          && form.cidade;
+  document.getElementById('btn0').disabled = !ok;
+}
+
+document.getElementById('fNome').addEventListener('input', function(){
+  form.nome = this.value;
+  validateStep0();
+});
+
+function selectCity(city) {
+  form.cidade = city;
+  document.getElementById('cityVit').classList.toggle('sel', city === 'Vitória da Conquista');
+  document.getElementById('cityFei').classList.toggle('sel', city === 'Feira de Santana');
+  // ── MELHORIA 3 — Auto-avança para próxima etapa ao selecionar cidade
+  validateStep0();
+  if (form.nome.trim().length >= 2 && form.tel.length === 11 && form.tel[2] === '9') {
+    setTimeout(() => nextStep(0), 400);
+  }
+}
+
+// ── Step 1 ───────────────────────────────────────────────────────────
+function selectMotivo(motivo, idx) {
+  form.motivo = motivo;
+  for(let i=0;i<4;i++){
+    document.getElementById('mot'+i).classList.toggle('sel', i === idx);
+    document.getElementById('chk'+i).innerHTML = i === idx ? '✓' : '';
+  }
+  // Auto-avança se óculos já selecionado
+  if (form.oculos !== null) {
+    setTimeout(() => nextStep(1), 400);
+  }
+}
+
+function selectOculos(val) {
+  form.oculos = val;
+  document.getElementById('ocSim').classList.toggle('sel', val === true);
+  document.getElementById('ocNao').classList.toggle('sel', val === false);
+  // Auto-avança se motivo já selecionado
+  if (form.motivo) {
+    setTimeout(() => nextStep(1), 400);
+  }
+}
+
+// ── Calendar ─────────────────────────────────────────────────────────
+function renderCal() {
+  const y = calDate.getFullYear(), m = calDate.getMonth();
+  document.getElementById('calMonth').textContent = `${MONTHS_PT[m]} ${y}`;
+  const firstDay = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+  let html = '';
+  for(let i=0;i<firstDay;i++) html += '<div></div>';
+  for(let d=1;d<=daysInMonth;d++) {
+    const date = new Date(y,m,d);
+    const isPast = date < today;
+    const isSun = date.getDay() === 0;
+    const isSel = form.data && form.data.toDateString() === date.toDateString();
+    const disabled = isPast || isSun;
+    html += `<button class="cal-day${isSel?' sel':''}" ${disabled?'disabled':''} onclick="selectDate(${y},${m},${d})">${d}</button>`;
+  }
+  document.getElementById('calDays').innerHTML = html;
+  const disp = document.getElementById('calSelDisplay');
+  if(form.data) {
+    disp.textContent = '📅 ' + fmtDateLong(form.data);
+    disp.style.display = 'block';
+  } else {
+    disp.style.display = 'none';
+  }
+}
+
+function calNav(dir) {
+  calDate.setMonth(calDate.getMonth() + dir);
+  renderCal();
+}
+
+function selectDate(y, m, d) {
+  form.data = new Date(y,m,d);
+  form.horario = null;
+  renderCal();
+  renderTimeSlots();
+  validateStep2();
+}
+
+// ── Time slots — usa SESSION_SLOTS (aleatório por sessão) ────────────
+function renderTimeSlots() {
+  const wrap = document.getElementById('timeSlotsWrap');
+  if(!form.data) { wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+  const now = new Date();
+  const isToday = form.data.toDateString() === now.toDateString();
+  let html = '';
+  SESSION_SLOTS.forEach(t => {
+    const [hh,mm] = t.split(':').map(Number);
+    const slotDate = new Date(form.data);
+    slotDate.setHours(hh,mm,0,0);
+    const isPast = isToday && slotDate <= now;
+    const isSel = form.horario === t;
+    html += `<button class="time-btn${isSel?' sel':''}" ${isPast?'disabled':''} onclick="selectTime('${t}')">${t}</button>`;
+  });
+  document.getElementById('timeGrid').innerHTML = html;
+  // Scrolla suavemente até os horários
+  setTimeout(() => wrap.scrollIntoView({ behavior:'smooth', block:'nearest' }), 100);
+}
+
+function selectTime(t) {
+  form.horario = t;
+  renderTimeSlots();
+  validateStep2();
+  // ── MELHORIA 3 — Auto-avança ao selecionar horário
+  setTimeout(() => nextStep(2), 500);
+}
+
+function validateStep2() {
+  document.getElementById('btn2').disabled = !(form.data && form.horario);
+}
+
+// ── Navigation ───────────────────────────────────────────────────────
+function updateProgress(step) {
+  const pcts = ['0%','50%','100%'];
+  document.getElementById('progFill').style.width = pcts[step];
+  for(let i=0;i<3;i++) {
+    const dot = document.getElementById('dot'+i);
+    const lbl = document.getElementById('lbl'+i);
+    dot.className = 'prog-dot ' + (i < step ? 'done' : i === step ? 'active' : 'pending');
+    dot.textContent = i < step ? '✓' : String(i+1);
+    lbl.className = 'prog-lbl' + (i === step ? ' active' : '');
+  }
+}
+
+function nextStep(from) {
+  // Guarda de segurança — se a etapa já não está ativa, ignora
+  const fromPanel = document.getElementById('step'+from);
+  if (!fromPanel || !fromPanel.classList.contains('on')) return;
+
+  if(from === 2) {
+    const badge = document.getElementById('sendingBadge');
+    badge.style.display = 'block';
+    document.getElementById('btn2').disabled = true;
+    sendToSheets();
+    sendToCRM();
+    setTimeout(showConfirmation, 900);
+    return;
+  }
+  fromPanel.classList.remove('on');
+  const next = from + 1;
+  const panel = document.getElementById('step'+next);
+  panel.classList.add('on');
+  panel.style.animation = 'none';
+  requestAnimationFrame(() => {
+    panel.style.animation = '';
+    panel.classList.add('anim-slide-left');
+  });
+  updateProgress(next);
+  if(next === 2) renderCal();
+  // Scrolla para o topo do formulário
+  document.querySelector('.form-card')?.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function prevStep(from) {
+  document.getElementById('step'+from).classList.remove('on');
+  const prev = from - 1;
+  const panel = document.getElementById('step'+prev);
+  panel.classList.add('on');
+  panel.style.animation = 'none';
+  requestAnimationFrame(() => {
+    panel.style.animation = '';
+    panel.classList.add('anim-slide-right');
+  });
+  updateProgress(prev);
+}
+
+// ── Confirmation ─────────────────────────────────────────────────────
+function showConfirmation() {
+  document.getElementById('formScreen').style.display = 'none';
+  const cs = document.getElementById('confirmScreen');
+  cs.classList.add('on');
+  document.getElementById('confData').textContent    = form.data    ? fmtDateLong(form.data) : '—';
+  document.getElementById('confHorario').textContent = form.horario || '—';
+  document.getElementById('confCidade').textContent  = form.cidade  || '—';
+  launchConfetti();
+}
+
+// ── Confetti ─────────────────────────────────────────────────────────
+function launchConfetti() {
+  const c = document.getElementById('confettiContainer');
+  const colors = ['#2563eb','#ffffff','#60a5fa','#10b981','#fbbf24','#f43f5e'];
+  for(let i=0;i<80;i++) {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position:absolute;
+      width:${6+Math.random()*6}px;height:${6+Math.random()*6}px;
+      background:${colors[Math.floor(Math.random()*colors.length)]};
+      left:${Math.random()*100}%;top:-20px;
+      border-radius:${Math.random()>.5?'50%':'2px'};
+      animation:confetti-fall ${2+Math.random()*2}s ease forwards;
+      animation-delay:${Math.random()*1.5}s;
+    `;
+    c.appendChild(el);
+  }
+  setTimeout(() => c.innerHTML = '', 5000);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+renderCal();
+</script>
+</body>
+</html>
