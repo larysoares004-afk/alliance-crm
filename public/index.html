@@ -3894,11 +3894,18 @@ function renderListaUsuarios(cfg, lista){
 }
 
 async function carregarEMostrarUsuarios(cfg){
+  const token = _getAuthToken();
   const online = await backendDisponivel();
-  if(online){
+  if(online && token){
     api('GET','/api/usuarios')
       .then(lista => renderListaUsuarios(cfg, lista))
-      .catch(e => { cfg.innerHTML=`<div style="padding:20px;color:var(--rose)">❌ Erro: ${e.message}</div>`; });
+      .catch(e => {
+        if(e.message && (e.message.includes('autenticado') || e.message.includes('Sessão'))) {
+          renderListaUsuarios(cfg, getUsuariosOffline());
+        } else {
+          cfg.innerHTML=`<div style="padding:20px;color:var(--rose)">❌ Erro: ${e.message}</div>`;
+        }
+      });
   } else {
     renderListaUsuarios(cfg, getUsuariosOffline());
   }
