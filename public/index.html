@@ -684,7 +684,7 @@ select.inp{cursor:pointer}
 <div id="main">
 <div class="hdr">
   <!-- Botão hamburguer (mobile) -->
-  <button id="menuToggle" onclick="toggleMobileMenu()" aria-label="Menu" style="display:none;position:fixed;top:9px;left:12px;z-index:300;width:36px;height:36px;align-items:center;justify-content:center;flex-direction:column;gap:5px;background:#16a34a;border:none;border-radius:10px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.2)">
+  <button id="menuToggle" onclick="toggleMobileMenu()" aria-label="Menu">
     <span></span><span></span><span></span>
   </button>
   <div class="hdr-search" onclick="toast('Busca global em desenvolvimento','')">
@@ -1367,6 +1367,11 @@ async function api(method, path, body) {
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    sessionStorage.removeItem('alliance_sess');
+    location.reload();
+    return;
+  }
   if (!res.ok) throw new Error(data.error || 'Erro ' + res.status);
   return data;
 }
