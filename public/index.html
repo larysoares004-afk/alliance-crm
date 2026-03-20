@@ -3570,7 +3570,7 @@ function setCfgTab(t,btn){
 
 function mostrarAbaUsuarios(){
   const tabEl=document.getElementById('cfgTabUsuarios');
-  if(tabEl&&currentUser&&currentUser.role==='admin') tabEl.style.display='';
+  if(tabEl&&currentUser&&(currentUser.role==='admin'||currentUser.role==='gestor')) tabEl.style.display='';
 }
 
 function renderConfig(){

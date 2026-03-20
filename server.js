@@ -223,11 +223,11 @@ app.post('/api/auth/trocar-senha', auth, (req, res) => {
 // USUÁRIOS
 // ════════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/usuarios', auth, requireRole('admin'), (req, res) => {
+app.get('/api/usuarios', auth, requireRole('admin','gestor'), (req, res) => {
   res.json(db.prepare('SELECT id,nome,usuario,cargo,role,setor,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY id').all());
 });
 
-app.post('/api/usuarios', auth, requireRole('admin'), (req, res) => {
+app.post('/api/usuarios', auth, requireRole('admin','gestor'), (req, res) => {
   const { nome, usuario, senha, cargo, role, setor } = req.body;
   if (!nome || !usuario || !senha || !role) return res.status(400).json({ error: 'Campos obrigatórios' });
   if (senha.length < 6) return res.status(400).json({ error: 'Senha mínimo 6 caracteres' });
@@ -239,7 +239,7 @@ app.post('/api/usuarios', auth, requireRole('admin'), (req, res) => {
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
-app.put('/api/usuarios/:id', auth, requireRole('admin'), (req, res) => {
+app.put('/api/usuarios/:id', auth, requireRole('admin','gestor'), (req, res) => {
   const { nome, usuario, cargo, role, setor, ativo, novaSenha } = req.body;
   // Verificar unicidade do novo login se mudou
   if (usuario) {
@@ -255,7 +255,7 @@ app.put('/api/usuarios/:id', auth, requireRole('admin'), (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/usuarios/:id', auth, requireRole('admin'), (req, res) => {
+app.delete('/api/usuarios/:id', auth, requireRole('admin','gestor'), (req, res) => {
   if (Number(req.params.id) === req.user.id)
     return res.status(400).json({ error: 'Não pode remover a si mesmo' });
   db.prepare('UPDATE usuarios SET ativo=0 WHERE id=?').run(req.params.id);
