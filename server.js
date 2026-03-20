@@ -286,13 +286,40 @@ app.get('/api/leads', auth, (req, res) => {
 });
 
 // Rota pública para Landing Page
-app.post('/api/leads/public', (req, res) => {
+// ── Envio automático via Evolution API ───────────────────────────────────────
+async function enviarWhatsAppAutoLead(nome, telefone, unidade) {
+  try {
+    const cfgRow = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_auto'").get();
+    if (!cfgRow) return;
+    const cfg = JSON.parse(cfgRow.valor);
+    if (!cfg.evolUrl || !cfg.evolKey || !cfg.evolInstance || !cfg.ativo) return;
+    // Normaliza telefone: remove não-dígitos, garante DDI 55
+    let num = (telefone || '').replace(/\D/g, '');
+    if (!num) return;
+    if (!num.startsWith('55')) num = '55' + num;
+    const msgTemplate = cfg.mensagem ||
+      `Olá {nome}! 👋 Recebemos seu agendamento de Exame de Vista na Grupo RM Clínica - {unidade}.\n\n` +
+      `Em breve nossa equipe entrará em contato para confirmar seu horário. 📅\n\n` +
+      `Qualquer dúvida, estamos aqui! 😊`;
+    const texto = msgTemplate.replace('{nome}', nome).replace('{unidade}', unidade);
+    const url = `${cfg.evolUrl.replace(/\/$/, '')}/message/sendText/${cfg.evolInstance}`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': cfg.evolKey },
+      body: JSON.stringify({ number: num, text: texto }),
+    });
+  } catch(e) { /* não bloqueia o lead */ }
+}
+
+app.post('/api/leads/public', async (req, res) => {
   const d = req.body;
   if (!d.nome) return res.status(400).json({ error: 'Nome obrigatório' });
   const count = db.prepare('SELECT COUNT(*) as c FROM leads').get().c;
   const unidade = d.unidade || d.localidade || 'Conquista';
   const r = db.prepare('INSERT INTO leads (nome,telefone,origem,status,motivo,oculos,valor,os,unidade) VALUES (?,?,?,?,?,?,?,?,?)')
     .run(d.nome, d.telefone||'', d.origem||'Landing Page', 'LEAD', d.motivo||'', d.oculos||'Sim', d.valor||20, String(1000+count+1), unidade);
+  // Dispara WhatsApp automático sem bloquear resposta
+  enviarWhatsAppAutoLead(d.nome, d.telefone||'', unidade);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
@@ -406,6 +433,18 @@ app.get('/api/config', auth, (req, res) => {
 app.put('/api/config', auth, requireRole('admin'), (req, res) => {
   const stmt = db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)');
   Object.entries(req.body).forEach(([k, v]) => stmt.run(k, JSON.stringify(v)));
+  res.json({ ok: true });
+});
+
+// Endpoint específico para config do WhatsApp automático (admin + gestor)
+app.get('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, res) => {
+  const row = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_auto'").get();
+  if (!row) return res.json({});
+  try { res.json(JSON.parse(row.valor)); } catch { res.json({}); }
+});
+
+app.put('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, res) => {
+  db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('whatsapp_auto', JSON.stringify(req.body));
   res.json({ ok: true });
 });
 

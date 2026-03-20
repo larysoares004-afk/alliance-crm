@@ -971,6 +971,45 @@ select.inp{cursor:pointer}
       <button class="btn btn-ghost" onclick="testarWppApi()">🧪 Testar Conexão</button>
     </div>
   </div>
+
+  <!-- Automação: mensagem automática para leads da LP -->
+  <div class="card" style="margin-top:20px">
+    <div class="card-hdr">
+      <div>
+        <div class="card-title">🤖 Mensagem Automática para Leads da Landing Page</div>
+        <div class="card-sub">Quando um lead chega pela LP, envia mensagem automática via Evolution API</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="wppAutoAtivo" onchange="toggleWppAutoAtivo(this.checked)"
+          style="width:16px;height:16px;accent-color:var(--blue)">
+        <span style="font-size:12px;font-weight:700" id="wppAutoAtivoLabel">Desativado</span>
+      </label>
+    </div>
+    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div>
+        <label class="lbl">URL do Evolution API</label>
+        <input type="text" id="wppAutoUrl" class="inp" placeholder="https://api.evolution.io" style="font-family:monospace;font-size:12px">
+      </div>
+      <div>
+        <label class="lbl">API Key</label>
+        <input type="password" id="wppAutoKey" class="inp" placeholder="Sua apikey aqui..." style="font-family:monospace;font-size:12px">
+      </div>
+      <div>
+        <label class="lbl">Nome da Instância</label>
+        <input type="text" id="wppAutoInst" class="inp" placeholder="minha-instancia" style="font-family:monospace;font-size:12px">
+      </div>
+    </div>
+    <div style="padding:0 20px 14px">
+      <label class="lbl">Mensagem (use {nome} e {unidade})</label>
+      <textarea id="wppAutoMsg" class="inp" rows="4" placeholder="Olá {nome}! Recebemos seu agendamento de Exame de Vista na Grupo RM Clínica - {unidade}. Em breve nossa equipe entrará em contato! 😊"
+        style="resize:vertical;font-size:12px;line-height:1.5"></textarea>
+    </div>
+    <div style="padding:0 20px 20px;display:flex;gap:10px">
+      <button class="btn btn-primary" onclick="salvarWppAuto()">💾 Salvar Automação</button>
+      <button class="btn btn-ghost" onclick="testarWppAuto()">🧪 Testar Envio</button>
+      <span id="wppAutoStatus" style="align-self:center;font-size:11px;color:var(--z400)"></span>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════════ ATENDIMENTOS ════════════════════════ -->
@@ -4630,11 +4669,81 @@ async function enviarMsgWppOficial(para, mensagem) {
 }
 
 // Ao carregar a view do WPP, preencher campos com config salva
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTOMAÇÃO WHATSAPP — Mensagem automática para leads da LP
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function carregarWppAuto() {
+  try {
+    const cfg = await api('GET', '/api/config/whatsapp-auto');
+    const url  = document.getElementById('wppAutoUrl');
+    const key  = document.getElementById('wppAutoKey');
+    const inst = document.getElementById('wppAutoInst');
+    const msg  = document.getElementById('wppAutoMsg');
+    const chk  = document.getElementById('wppAutoAtivo');
+    const lbl  = document.getElementById('wppAutoAtivoLabel');
+    if (url  && cfg.evolUrl)    url.value  = cfg.evolUrl;
+    if (key  && cfg.evolKey)    key.value  = cfg.evolKey;
+    if (inst && cfg.evolInstance) inst.value = cfg.evolInstance;
+    if (msg  && cfg.mensagem)   msg.value  = cfg.mensagem;
+    if (chk) { chk.checked = !!cfg.ativo; }
+    if (lbl) { lbl.textContent = cfg.ativo ? 'Ativado ✅' : 'Desativado'; lbl.style.color = cfg.ativo ? 'var(--green)' : 'var(--z400)'; }
+  } catch(e) {}
+}
+
+async function salvarWppAuto() {
+  const evolUrl      = document.getElementById('wppAutoUrl')?.value?.trim();
+  const evolKey      = document.getElementById('wppAutoKey')?.value?.trim();
+  const evolInstance = document.getElementById('wppAutoInst')?.value?.trim();
+  const mensagem     = document.getElementById('wppAutoMsg')?.value?.trim();
+  const ativo        = document.getElementById('wppAutoAtivo')?.checked || false;
+  if (!evolUrl || !evolKey || !evolInstance) { toast('Preencha URL, API Key e Instância', 'error'); return; }
+  const st = document.getElementById('wppAutoStatus');
+  if (st) st.textContent = 'Salvando...';
+  try {
+    await api('PUT', '/api/config/whatsapp-auto', { evolUrl, evolKey, evolInstance, mensagem, ativo });
+    toast('Automação salva com sucesso!', 'success');
+    if (st) st.textContent = 'Salvo ✅';
+  } catch(e) {
+    toast('Erro ao salvar: ' + e.message, 'error');
+    if (st) st.textContent = 'Erro ❌';
+  }
+}
+
+async function testarWppAuto() {
+  const evolUrl      = document.getElementById('wppAutoUrl')?.value?.trim();
+  const evolKey      = document.getElementById('wppAutoKey')?.value?.trim();
+  const evolInstance = document.getElementById('wppAutoInst')?.value?.trim();
+  if (!evolUrl || !evolKey || !evolInstance) { toast('Preencha os campos primeiro', 'error'); return; }
+  const num = prompt('Número para teste (ex: 77999990000):');
+  if (!num) return;
+  let numFmt = num.replace(/\D/g, '');
+  if (!numFmt.startsWith('55')) numFmt = '55' + numFmt;
+  const st = document.getElementById('wppAutoStatus');
+  if (st) st.textContent = 'Enviando teste...';
+  try {
+    const r = await fetch(`${evolUrl.replace(/\/$/, '')}/message/sendText/${evolInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': evolKey },
+      body: JSON.stringify({ number: numFmt, text: '🤖 Teste de automação Alliance CRM — está funcionando!' }),
+    });
+    const d = await r.json();
+    if (r.ok) { toast('Mensagem de teste enviada! 📱', 'success'); if(st) st.textContent = 'Teste enviado ✅'; }
+    else { toast('Erro API: ' + (d.message || r.status), 'error'); if(st) st.textContent = 'Erro ❌'; }
+  } catch(e) { toast('Erro de conexão: ' + e.message, 'error'); if(st) st.textContent = 'Erro ❌'; }
+}
+
+function toggleWppAutoAtivo(checked) {
+  const lbl = document.getElementById('wppAutoAtivoLabel');
+  if (lbl) { lbl.textContent = checked ? 'Ativado ✅' : 'Desativado'; lbl.style.color = checked ? 'var(--green)' : 'var(--z400)'; }
+}
+
 function loadWppApiConfig() {
   const cfg = JSON.parse(localStorage.getItem('alliance_wpp_api') || '{}');
   const t = document.getElementById('wppApiToken'); if(t && cfg.token)   t.value = cfg.token;
   const p = document.getElementById('wppPhoneId');  if(p && cfg.phoneId) p.value = cfg.phoneId;
   const b = document.getElementById('wppBizId');    if(b && cfg.bizId)   b.value = cfg.bizId;
+  carregarWppAuto(); // carrega config da automação do backend
   // Restaurar estado Instagram
   const insta = JSON.parse(localStorage.getItem('alliance_insta') || '{}');
   if (insta.conectado && insta.token) {
