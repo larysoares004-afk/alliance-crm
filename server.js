@@ -192,7 +192,7 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   res.cookie('crm_token', token, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    sameSite: isProduction ? 'none' : 'none',
     maxAge: 8 * 3600 * 1000,
   });
 
