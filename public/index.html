@@ -1437,9 +1437,29 @@ let currentUser = null;
 // Retorna token salvo na sessão (fallback robusto para cookies bloqueados em mobile)
 function _getAuthToken() {
   try {
+    // 1. Tenta sessionStorage (desktop/abas)
     const s = JSON.parse(sessionStorage.getItem('alliance_sess') || 'null');
-    return s && s.token ? s.token : null;
+    if (s && s.token) return s.token;
+    // 2. Fallback: localStorage (iOS Safari apaga sessionStorage em segundo plano)
+    const t = localStorage.getItem('alliance_token');
+    if (t) return t;
+    return null;
   } catch(e) { return null; }
+}
+
+function _salvarToken(token) {
+  // Salva em ambos os storages para garantir persistência no iOS
+  try {
+    const s = JSON.parse(sessionStorage.getItem('alliance_sess') || '{}');
+    s.token = token; s.offline = false;
+    sessionStorage.setItem('alliance_sess', JSON.stringify(s));
+  } catch(e) {}
+  try { localStorage.setItem('alliance_token', token); } catch(e) {}
+}
+
+function _limparToken() {
+  try { sessionStorage.removeItem('alliance_sess'); } catch(e) {}
+  try { localStorage.removeItem('alliance_token'); } catch(e) {}
 }
 
 async function api(method, path, body) {
@@ -1533,24 +1553,28 @@ function _executarLogin() {
   if (u) {
     entrarComUser(u, true);
     if (btn) { btn.textContent = 'Entrar'; btn.style.background = '#16a34a'; }
-    // Aguarda token real do backend (até 2s) antes de iniciar o sistema
+    // Aguarda token real do backend (até 5s — mobile pode ser mais lento)
+    var _tokenRecebido = false;
     var _tokenFetch = fetch('/api/auth/login', {
       method:'POST', headers:{'Content-Type':'application/json'},
       credentials:'include', body: JSON.stringify({usuario:usuario,senha:senha})
     }).then(function(r){return r.json();}).then(function(d){
       if(d.ok && d.token){
-        try{
-          var s=JSON.parse(sessionStorage.getItem('alliance_sess')||'{}');
-          s.token=d.token; s.offline=false;
-          sessionStorage.setItem('alliance_sess',JSON.stringify(s));
-          currentUser=d.user;
-          currentUser.permissoes=d.permissoes||PERMISSOES[d.user.role]||[];
-        }catch(e){}
+        _tokenRecebido = true;
+        _salvarToken(d.token);
+        currentUser=d.user;
+        currentUser.permissoes=d.permissoes||PERMISSOES[d.user.role]||[];
       }
     }).catch(function(){});
-    var _tokenTimeout = new Promise(function(resolve){ setTimeout(resolve, 2000); });
+    var _tokenTimeout = new Promise(function(resolve){ setTimeout(resolve, 5000); });
     Promise.race([_tokenFetch, _tokenTimeout]).then(function(){
-      try { iniciarSistema(); } catch(e) { console.error(e); }
+      try {
+        iniciarSistema();
+        // Se recebeu token, sincroniza dados reais do servidor
+        if (_tokenRecebido) {
+          setTimeout(function(){ sincronizarDados().catch(function(){}); }, 600);
+        }
+      } catch(e) { console.error(e); }
     });
     return;
   }
@@ -1572,6 +1596,8 @@ function _executarLogin() {
     if (!res.ok) { erro(res.d.error || 'Usuário ou senha incorretos'); return; }
     currentUser = res.d.user;
     currentUser.permissoes = res.d.permissoes || PERMISSOES[res.d.user.role] || [];
+    // Salvar token em sessionStorage + localStorage (persiste no iOS)
+    if (res.d.token) _salvarToken(res.d.token);
     sessionStorage.setItem('alliance_sess', JSON.stringify({
       usuario: currentUser.usuario, expira: Date.now()+8*3600*1000, offline:false, token: res.d.token || null
     }));
@@ -1593,15 +1619,35 @@ function toggleSenha(){const i=document.getElementById('loginPass');if(i)i.type=
 
 async function doLogout() {
   try { await api('POST', '/api/auth/logout'); } catch(e) {}
-  sessionStorage.removeItem('alliance_sess');
+  _limparToken();
   currentUser = null;
   location.reload();
 }
 
 function checkSession() {
   try {
-    const s = JSON.parse(sessionStorage.getItem('alliance_sess') || 'null');
-    if (!s || s.expira < Date.now()) return Promise.resolve(false);
+    // iOS: restaurar sessão do localStorage se sessionStorage foi apagado pelo Safari
+    let s = JSON.parse(sessionStorage.getItem('alliance_sess') || 'null');
+    const tokenLS = localStorage.getItem('alliance_token');
+    if (!s && tokenLS) {
+      // Sessão perdida (iOS background) mas token ainda existe — restaurar
+      s = { usuario: '__restore__', expira: Date.now() + 8*3600*1000, offline: false, token: tokenLS };
+      sessionStorage.setItem('alliance_sess', JSON.stringify(s));
+    }
+    if (!s || s.expira < Date.now()) { _limparToken(); return Promise.resolve(false); }
+    // Se só tem o token (sem usuario local), verificar backend direto
+    if (s.usuario === '__restore__' && tokenLS) {
+      return api('GET', '/api/auth/me').then(d => {
+        currentUser = d.user;
+        currentUser.permissoes = d.permissoes || PERMISSOES[d.user.role] || [];
+        // Atualizar sessão com o usuario correto
+        const ns = { usuario: d.user.usuario, expira: Date.now()+8*3600*1000, offline:false, token: tokenLS };
+        sessionStorage.setItem('alliance_sess', JSON.stringify(ns));
+        // Sincronizar dados reais após restaurar sessão
+        setTimeout(() => sincronizarDados().catch(()=>{}), 300);
+        return true;
+      }).catch(() => { _limparToken(); return false; });
+    }
 
     // Sessão offline ou fallback — restaurar IMEDIATAMENTE sem rede
     const listaLocal = getUsuariosOffline ? getUsuariosOffline() : [];
