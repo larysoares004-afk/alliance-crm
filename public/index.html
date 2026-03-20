@@ -1446,8 +1446,8 @@ function _executarLogin() {
   if (u) {
     entrarComUser(u, true);
     if (btn) { btn.textContent = 'Entrar'; btn.style.background = '#16a34a'; }
-    // Busca token real do backend em segundo plano (sem bloquear UX)
-    fetch('/api/auth/login', {
+    // Aguarda token real do backend (até 2s) antes de iniciar o sistema
+    var _tokenFetch = fetch('/api/auth/login', {
       method:'POST', headers:{'Content-Type':'application/json'},
       credentials:'include', body: JSON.stringify({usuario:usuario,senha:senha})
     }).then(function(r){return r.json();}).then(function(d){
@@ -1461,7 +1461,10 @@ function _executarLogin() {
         }catch(e){}
       }
     }).catch(function(){});
-    try { iniciarSistema(); } catch(e) { console.error(e); }
+    var _tokenTimeout = new Promise(function(resolve){ setTimeout(resolve, 2000); });
+    Promise.race([_tokenFetch, _tokenTimeout]).then(function(){
+      try { iniciarSistema(); } catch(e) { console.error(e); }
+    });
     return;
   }
 
