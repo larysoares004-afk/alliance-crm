@@ -1,6 +1,6 @@
 {
   "name": "alliance-crm-backend",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Alliance Optometria CRM Backend",
   "main": "server.js",
   "scripts": {
