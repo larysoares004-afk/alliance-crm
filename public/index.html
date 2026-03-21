@@ -1571,29 +1571,34 @@ function _executarLogin() {
   if (u) {
     entrarComUser(u, true);
     if (btn) { btn.textContent = 'Entrar'; btn.style.background = '#16a34a'; }
-    // Aguarda token real do backend (até 5s — mobile pode ser mais lento)
-    var _tokenRecebido = false;
-    var _tokenFetch = fetch('/api/auth/login', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      credentials:'include', body: JSON.stringify({usuario:usuario,senha:senha})
-    }).then(function(r){return r.json();}).then(function(d){
-      if(d.ok && d.token){
-        _tokenRecebido = true;
-        _salvarToken(d.token);
-        currentUser=d.user;
-        currentUser.permissoes=d.permissoes||PERMISSOES[d.user.role]||[];
-      }
-    }).catch(function(){});
-    var _tokenTimeout = new Promise(function(resolve){ setTimeout(resolve, 5000); });
-    Promise.race([_tokenFetch, _tokenTimeout]).then(function(){
-      try {
-        iniciarSistema();
-        // Se recebeu token, sincroniza dados reais do servidor
-        if (_tokenRecebido) {
-          setTimeout(function(){ sincronizarDados().catch(function(){}); }, 600);
+
+    // Inicia o sistema imediatamente com dados offline
+    try { iniciarSistema(); } catch(e) { console.error(e); }
+
+    // Busca o token real em background, com retry automático (até 8 tentativas, 3s entre elas)
+    var _creds = {usuario: usuario, senha: senha};
+    var _retries = 0;
+    function _buscarTokenReal() {
+      if (_retries >= 8) return; // desistir após ~24 segundos
+      _retries++;
+      fetch('/api/auth/login', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        credentials:'include', body: JSON.stringify(_creds)
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.ok && d.token) {
+          _salvarToken(d.token);
+          currentUser = d.user;
+          currentUser.permissoes = d.permissoes || PERMISSOES[d.user.role] || [];
+          // Sincroniza dados reais e re-renderiza a aba atual
+          sincronizarDados().catch(function(){});
+        } else {
+          setTimeout(_buscarTokenReal, 3000);
         }
-      } catch(e) { console.error(e); }
-    });
+      }).catch(function(){
+        setTimeout(_buscarTokenReal, 3000); // backend ainda não respondeu — tenta de novo
+      });
+    }
+    setTimeout(_buscarTokenReal, 800); // primeira tentativa após 800ms
     return;
   }
 
@@ -1705,6 +1710,20 @@ function checkSession() {
 }
 
 // ── Sincronizar dados do backend para state local ─────────────────────────────
+// Re-renderiza a aba atual após sincronização
+function _reRenderCurrentTab() {
+  try {
+    const tab = uiState && uiState.currentTab;
+    if(!tab) return;
+    if(tab==='leads')         { try{renderKanban();}catch(e){} }
+    else if(tab==='dashboard'){ try{renderDashboard();}catch(e){} }
+    else if(tab==='faturamento'){ try{renderFaturamento();}catch(e){} }
+    else if(tab==='agenda')   { try{renderAgenda();}catch(e){} }
+    else if(tab==='atendimentos'){ try{renderAttList();}catch(e){} }
+    else if(tab==='chat')     { try{renderChatInterno();}catch(e){} }
+  } catch(e) {}
+}
+
 async function sincronizarDados() {
   if (!_getAuthToken()) return; // sem token JWT, não tenta chamar APIs
   try {
@@ -1783,6 +1802,8 @@ async function sincronizarDados() {
     } catch(e) {}
 
     saveState();
+    // Re-renderiza a aba atual para mostrar dados frescos do backend
+    _reRenderCurrentTab();
   } catch(e) {
     console.warn('Erro ao sincronizar dados:', e);
   }
@@ -1830,17 +1851,13 @@ function iniciarSistema(){
     console.error('iniciarSistema error:', e);
     try { goTo('dashboard'); } catch(e2) {}
   }
-  // Polling a cada 30s (só se backend disponível)
+  // Polling a cada 30s — force re-check backend e sincroniza dados reais
   setInterval(function(){
+    _backendStatus = null; // força nova verificação de conectividade
     backendDisponivel().then(function(online){
       if(!online) return;
-      sincronizarDados().then(function(){
-        if(uiState.currentTab==='leads') renderKanban();
-        if(uiState.currentTab==='dashboard') renderDashboard();
-        if(uiState.currentTab==='faturamento') renderFaturamento();
-        if(uiState.currentTab==='agenda') renderAgenda();
-        if(uiState.currentTab==='chat') renderChatInterno();
-      }).catch(function(){});
+      if(!_getAuthToken()) return; // sem token, não sincroniza
+      sincronizarDados().catch(function(){});
     });
   }, 30000);
 }
