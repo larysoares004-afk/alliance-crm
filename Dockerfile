@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --production
 # ARG muda a cada deploy — invalida o cache do COPY abaixo
-ARG CACHEBUST=1
+ARG CACHEBUST=20260321
 RUN echo "Deploy $CACHEBUST"
 COPY . .
 RUN mkdir -p /data
