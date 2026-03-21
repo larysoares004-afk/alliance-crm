@@ -487,6 +487,24 @@ app.use(express.static(path.join(__dirname, 'public'), {
   etag: true,
 }));
 
+// Rota explícita para a Landing Page (garante servir mesmo sem cache Docker)
+let _lpCache = null;
+app.get(['/lp', '/lp.html'], async (req, res) => {
+  const lpPath = path.join(__dirname, 'public', 'lp.html');
+  if (fs.existsSync(lpPath)) return res.sendFile(lpPath);
+  // Fallback: busca do GitHub (quando arquivo não está no container por cache Docker)
+  try {
+    if (!_lpCache) {
+      const r = await fetch('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/lp.html');
+      _lpCache = await r.text();
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(_lpCache);
+  } catch(e) {
+    res.status(503).send('Landing page temporariamente indisponível');
+  }
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

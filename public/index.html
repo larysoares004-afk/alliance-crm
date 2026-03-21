@@ -1499,16 +1499,19 @@ const USERS_OFFLINE = [
 // Detecta se o backend está disponível (com timeout de 2s)
 // Detecta backend — com timeout curto, nunca bloqueia
 let _backendStatus = null; // null=desconhecido, true=online, false=offline
+let _backendCheckedAt = 0; // timestamp do último check
 async function backendDisponivel() {
   if (location.protocol === 'file:') return false;
-  if (_backendStatus !== null) return _backendStatus;
+  // Cache por 20s — evita flood, mas não trava offline para sempre (fix iOS)
+  if (_backendStatus !== null && Date.now() - _backendCheckedAt < 20000) return _backendStatus;
   try {
     const ctrl = new AbortController();
-    const tid = setTimeout(()=>ctrl.abort(), 1500);
+    const tid = setTimeout(()=>ctrl.abort(), 2500);
     const r = await fetch('/api/health', {signal: ctrl.signal});
     clearTimeout(tid);
     _backendStatus = r.ok;
   } catch(e) { _backendStatus = false; }
+  _backendCheckedAt = Date.now();
   return _backendStatus;
 }
 
@@ -1659,12 +1662,16 @@ function checkSession() {
       currentUser = {...user};
       delete currentUser.senha;
       currentUser.permissoes = user.permissoes || PERMISSOES[user.role] || [];
-      // Tentar atualizar do backend em background
-      if (!s.offline) {
+      // Tentar atualizar do backend em background (user + dados reais)
+      if (!s.offline && _getAuthToken()) {
         backendDisponivel().then(online => {
-          if(online) api('GET','/api/auth/me')
-            .then(d => { currentUser = d.user; currentUser.permissoes = d.permissoes || PERMISSOES[d.user.role] || []; })
-            .catch(()=>{});
+          if(online) {
+            api('GET','/api/auth/me')
+              .then(d => { currentUser = d.user; currentUser.permissoes = d.permissoes || PERMISSOES[d.user.role] || []; })
+              .catch(()=>{});
+            // Sincronizar dados reais do banco (fix iOS mostrando dados antigos)
+            setTimeout(() => sincronizarDados().catch(()=>{}), 500);
+          }
         });
       }
       return Promise.resolve(true);
