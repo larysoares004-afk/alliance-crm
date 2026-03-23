@@ -43,16 +43,24 @@ jobs:
         working-directory: twa-android
         run: ./gradlew assembleDebug --stacktrace --info 2>&1 | tail -100
 
-      - name: Localizar APK gerado
+      - name: Localizar e mover APK
         run: |
-          echo "=== APKs gerados ==="
+          echo "=== Todos os APKs ==="
           find twa-android -name "*.apk" 2>/dev/null
-          ls -lh twa-android/app/build/outputs/apk/debug/ 2>/dev/null || true
+          # Copiar o APK para um local fixo
+          APK=$(find twa-android -name "*.apk" | head -1)
+          if [ -n "$APK" ]; then
+            cp "$APK" GrupoRM-Clinica.apk
+            echo "APK copiado para GrupoRM-Clinica.apk ($(du -h GrupoRM-Clinica.apk | cut -f1))"
+          else
+            echo "ERRO: nenhum APK encontrado"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: GrupoRM-Clinica-App
-          path: twa-android/app/build/outputs/apk/debug/app-debug.apk
+          path: GrupoRM-Clinica.apk
           if-no-files-found: error
           retention-days: 90
