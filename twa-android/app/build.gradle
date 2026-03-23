@@ -29,7 +29,6 @@ android {
     }
 }
 
+// Sem dependências externas — apenas SDK Android nativo
 dependencies {
-    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
 }
