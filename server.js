@@ -494,7 +494,6 @@ let _lpCache = null;
 app.get(['/lp', '/lp.html'], async (req, res) => {
   const lpPath = path.join(__dirname, 'public', 'lp.html');
   if (fs.existsSync(lpPath)) return res.sendFile(lpPath);
-  // Fallback: busca do GitHub (quando arquivo não está no container por cache Docker)
   try {
     if (!_lpCache) {
       const r = await fetch('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/lp.html');
@@ -504,6 +503,23 @@ app.get(['/lp', '/lp.html'], async (req, res) => {
     res.send(_lpCache);
   } catch(e) {
     res.status(503).send('Landing page temporariamente indisponível');
+  }
+});
+
+// Rota explícita para página de instalação do app (com fallback GitHub)
+let _instalarCache = null;
+app.get(['/instalar', '/instalar.html', '/baixar', '/app', '/download'], async (req, res) => {
+  const p = path.join(__dirname, 'public', 'instalar.html');
+  if (fs.existsSync(p)) return res.sendFile(p);
+  try {
+    if (!_instalarCache) {
+      const r = await fetch('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/instalar.html');
+      _instalarCache = await r.text();
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(_instalarCache);
+  } catch(e) {
+    res.status(503).send('Página de instalação temporariamente indisponível');
   }
 });
 
