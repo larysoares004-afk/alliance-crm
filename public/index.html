@@ -387,12 +387,29 @@ select.inp{cursor:pointer}
 #menuToggle.open span:nth-child(2){opacity:0;transform:translateX(-8px)}
 #menuToggle.open span:nth-child(3){transform:rotate(-45deg) translate(5px,-5px)}
 #sbOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+/* Botão Voltar — mobile only */
+#btnVoltar{
+  display:none;position:fixed;
+  top:max(10px, env(safe-area-inset-top,10px));
+  right:max(10px, env(safe-area-inset-right,10px));
+  z-index:300;
+  width:44px;height:44px;border-radius:12px;
+  background:#fff;border:1.5px solid var(--z200);
+  box-shadow:0 2px 12px rgba(0,0,0,.12);
+  align-items:center;justify-content:center;
+  cursor:pointer;touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  transition:opacity .2s;
+}
+#btnVoltar svg{pointer-events:none}
 
 /* ── Tablet (≤768px) ─────────────────────────────────────── */
 @media(max-width:900px){
 
   /* Hamburguer visível */
   #menuToggle{display:flex !important}
+  /* Botão voltar — visível só quando há histórico */
+  #btnVoltar.visible{display:flex !important}
 
   /* Sidebar: drawer lateral */
   #sb{
@@ -705,6 +722,10 @@ select.inp{cursor:pointer}
   <!-- Botão hamburguer (mobile) -->
   <button id="menuToggle" onclick="toggleMobileMenu()" aria-label="Menu">
     <span></span><span></span><span></span>
+  </button>
+  <!-- Botão Voltar (mobile) -->
+  <button id="btnVoltar" onclick="voltarTela()" aria-label="Voltar">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
   </button>
   <div class="hdr-search" onclick="toast('Busca global em desenvolvimento','')">
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2146,7 +2167,52 @@ function closeModal(id) {
 }
 
 // ══════ NAVEGAÇÃO ══════════════════════════════════════════════════
+// ── Histórico de navegação mobile (botão Voltar) ──────────────────────────────
+var _navHistory = [];
+function _atualizarBtnVoltar() {
+  var btn = document.getElementById('btnVoltar');
+  if (!btn) return;
+  if (window.innerWidth > 900) { btn.classList.remove('visible'); return; }
+  if (_navHistory.length > 0) btn.classList.add('visible');
+  else btn.classList.remove('visible');
+}
+function voltarTela() {
+  if (_navHistory.length === 0) return;
+  var anterior = _navHistory.pop();
+  // Navega sem empilhar no histórico
+  _goToSemHistorico(anterior);
+  _atualizarBtnVoltar();
+}
+function _goToSemHistorico(tab) {
+  if(window.innerWidth <= 900) closeMobileMenu();
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  var view = document.getElementById('view-' + tab);
+  if (view) view.classList.add('on');
+  document.querySelectorAll('.nb').forEach(b => {
+    b.classList.remove('on');
+    var oc = b.getAttribute('onclick') || '';
+    if (oc.includes("goTo('" + tab + "')")) b.classList.add('on');
+  });
+  uiState.currentTab = tab;
+  if(tab==='dashboard')    renderDashboard();
+  if(tab==='leads')        renderKanban();
+  if(tab==='agenda')       renderAgenda();
+  if(tab==='faturamento')  renderFaturamento();
+  if(tab==='setores')      renderSetores();
+  if(tab==='servicos')     renderServicos();
+  if(tab==='chat')         renderChatInterno();
+  if(tab==='whatsapp')     { renderWpp(); setTimeout(loadWppApiConfig,100); }
+  if(tab==='atendimentos') renderAttList();
+  if(tab==='config')       renderConfig();
+  if(tab==='novo')         initNovo();
+}
+
 function goTo(tab) {
+  // Empilhar tela atual no histórico (só mobile, só se diferente)
+  if (window.innerWidth <= 900 && uiState.currentTab && uiState.currentTab !== tab) {
+    _navHistory.push(uiState.currentTab);
+    if (_navHistory.length > 10) _navHistory.shift(); // limitar histórico
+  }
   // Fechar menu mobile ao navegar
   if(window.innerWidth <= 768) closeMobileMenu();
   // Verificar permissão
@@ -2183,6 +2249,8 @@ function goTo(tab) {
   if (tab==='novo')         initNovo();
   // Scroll para o topo
   document.querySelector('.cnt')?.scrollTo(0, 0);
+  // Atualizar visibilidade do botão Voltar
+  _atualizarBtnVoltar();
 }
 
 // ══════ HELPERS ════════════════════════════════════════════════════
