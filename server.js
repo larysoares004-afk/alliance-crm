@@ -220,7 +220,9 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/me', auth, (req, res) => {
-  res.json({ user: req.user, permissoes: PERMISSOES[req.user.role] || [] });
+  try { db.exec("ALTER TABLE usuarios ADD COLUMN email TEXT DEFAULT ''"); } catch(e) {}
+  const u = db.prepare('SELECT email FROM usuarios WHERE id=?').get(req.user.id);
+  res.json({ user: { ...req.user, email: (u && u.email) || '' }, permissoes: PERMISSOES[req.user.role] || [] });
 });
 
 app.post('/api/auth/trocar-senha', auth, (req, res) => {

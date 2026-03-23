@@ -3911,12 +3911,19 @@ function renderConfig(){
         <label class="toggle"><input type="checkbox"${v?' checked':''} onchange="toast('Configuração salva!','success')"><span class="toggle-sl"></span></label>
       </div>`).join('')}`;
   } else if(uiState.cfgTab==='seg'){
-    cfg.innerHTML=`<div class="card-hdr"><div class="card-title">Segurança</div></div>
+    const _u = currentUser || {};
+    cfg.innerHTML=`<div class="card-hdr"><div class="card-title">Minha Conta</div></div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--z500);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Dados Pessoais</div>
+        <div><label class="lbl">Meu Nome</label><input type="text" id="meuNome" class="inp" placeholder="Seu nome completo" value="${(_u.nome||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="lbl">E-mail</label><input type="email" id="meuEmail" class="inp" placeholder="seu@email.com" value="${(_u.email||'').replace(/"/g,'&quot;')}"></div>
+        <button class="btn btn-primary" onclick="salvarMeuPerfil()">💾 Salvar Dados</button>
+        <hr style="border:none;border-top:1px solid var(--z100);margin:6px 0">
+        <div style="font-size:12px;font-weight:700;color:var(--z500);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Alterar Senha</div>
         <div><label class="lbl">Senha Atual</label><input type="password" id="senhaAtual" class="inp" placeholder="••••••••"></div>
         <div><label class="lbl">Nova Senha</label><input type="password" id="senhaNova" class="inp" placeholder="••••••••"></div>
         <div><label class="lbl">Confirmar Nova Senha</label><input type="password" id="senhaConfirm" class="inp" placeholder="••••••••"></div>
-        <button class="btn btn-primary" onclick="alterarSenha()">💾 Alterar Senha</button>
+        <button class="btn btn-primary" onclick="alterarSenha()">🔑 Alterar Senha</button>
       </div>`;
   } else if(uiState.cfgTab==='usuarios'){
     if(!currentUser||currentUser.role!=='admin'){cfg.innerHTML='<div style="padding:20px;color:var(--z400)">Acesso negado.</div>';return;}
@@ -3938,6 +3945,18 @@ async function saveCfgProfile(){
   updateHeader();
   renderConfig();
   toast('Configurações salvas!','success');
+}
+
+async function salvarMeuPerfil(){
+  const nome=(document.getElementById('meuNome')?.value||'').trim();
+  const email=(document.getElementById('meuEmail')?.value||'').trim();
+  if(!nome||nome.length<2){toast('Nome precisa ter pelo menos 2 caracteres','error');return;}
+  try {
+    await api('PUT','/api/auth/me',{nome,email});
+    if(currentUser){ currentUser.nome=nome; currentUser.email=email; }
+    updateHeader();
+    toast('✅ Dados salvos com sucesso!','success');
+  } catch(e){ toast('Erro: '+e.message,'error'); }
 }
 
 async function alterarSenha(){
