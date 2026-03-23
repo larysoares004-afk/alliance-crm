@@ -34,12 +34,27 @@ const dbDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 // ── Banco de dados ────────────────────────────────────────────────────────────
-// Limpa lock file órfão no Windows (gerado por node-sqlite3-wasm após crash)
-if (process.platform === 'win32') {
-  try { fs.rmSync(DB_PATH + '.lock', { recursive: true, force: true }); } catch(e) {}
+// Remove lock file órfão (qualquer plataforma) — evita "database is locked" no redeploy
+try { fs.rmSync(DB_PATH + '.lock', { recursive: true, force: true }); } catch(e) {}
+try { fs.rmSync(DB_PATH + '-wal', { force: true }); } catch(e) {}
+try { fs.rmSync(DB_PATH + '-shm', { force: true }); } catch(e) {}
+
+// Tentar abrir o banco com retry (Railway pode ter dois containers brevemente)
+let db;
+for (let _try = 0; _try < 10; _try++) {
+  try {
+    db = new Database(DB_PATH);
+    break;
+  } catch(e) {
+    if (_try >= 9) throw e;
+    // Espera síncrona de 1s (Atomics trick compatível com Node)
+    const shared = new Int32Array(new SharedArrayBuffer(4));
+    Atomics.wait(shared, 0, 0, 1000);
+  }
 }
-const db = new Database(DB_PATH);
-try { db.exec('PRAGMA foreign_keys = ON'); } catch(e) { /* PRAGMA opcional */ }
+try { db.exec('PRAGMA journal_mode=WAL'); } catch(e) {}
+try { db.exec('PRAGMA busy_timeout=5000'); } catch(e) {}
+try { db.exec('PRAGMA foreign_keys = ON'); } catch(e) {}
 
 // Separado em chamadas individuais — node-sqlite3-wasm não suporta multi-statement exec
 db.exec(`CREATE TABLE IF NOT EXISTS usuarios (
