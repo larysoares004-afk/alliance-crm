@@ -39,21 +39,27 @@ jobs:
         working-directory: twa-android
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Build APK (debug — sem necessidade de keystore)
+      - name: Build APK (debug)
         working-directory: twa-android
-        run: ./gradlew assembleDebug --stacktrace --info 2>&1 | tail -100
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee /tmp/gradle.log
+          echo "=== Build concluido ==="
+
+      - name: Mostrar log se falhou
+        if: failure()
+        run: tail -200 /tmp/gradle.log || true
 
       - name: Localizar e mover APK
         run: |
-          echo "=== Todos os APKs ==="
-          find twa-android -name "*.apk" 2>/dev/null
-          # Copiar o APK para um local fixo
+          echo "=== Procurando APKs ==="
+          find . -name "*.apk" 2>/dev/null || echo "nenhum apk"
           APK=$(find twa-android -name "*.apk" | head -1)
           if [ -n "$APK" ]; then
             cp "$APK" GrupoRM-Clinica.apk
-            echo "APK copiado para GrupoRM-Clinica.apk ($(du -h GrupoRM-Clinica.apk | cut -f1))"
+            echo "APK: $(du -h GrupoRM-Clinica.apk)"
           else
-            echo "ERRO: nenhum APK encontrado"
+            echo "ERRO: APK nao encontrado"
             exit 1
           fi
 
