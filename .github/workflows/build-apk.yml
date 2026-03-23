@@ -42,6 +42,21 @@ jobs:
         working-directory: twa-android
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+      - name: Gerar ícones do APK (logo Alliance)
+        run: |
+          SRC="public/icons/icon-512.png"
+          RES="twa-android/app/src/main/res"
+          mkdir -p "$RES/mipmap-mdpi"    "$RES/mipmap-hdpi"
+          mkdir -p "$RES/mipmap-xhdpi"   "$RES/mipmap-xxhdpi"
+          mkdir -p "$RES/mipmap-xxxhdpi"
+          convert "$SRC" -resize 48x48   "$RES/mipmap-mdpi/ic_launcher.png"
+          convert "$SRC" -resize 72x72   "$RES/mipmap-hdpi/ic_launcher.png"
+          convert "$SRC" -resize 96x96   "$RES/mipmap-xhdpi/ic_launcher.png"
+          convert "$SRC" -resize 144x144 "$RES/mipmap-xxhdpi/ic_launcher.png"
+          convert "$SRC" -resize 192x192 "$RES/mipmap-xxxhdpi/ic_launcher.png"
+          echo "Ícones gerados com sucesso!"
+          ls -lh "$RES"/mipmap-*/ic_launcher.png
+
       - name: Build APK (debug)
         working-directory: twa-android
         run: |
