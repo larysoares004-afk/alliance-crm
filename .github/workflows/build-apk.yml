@@ -11,35 +11,72 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Inicializar projeto TWA
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli@latest
+
+      - name: Criar twa-manifest.json pré-configurado
         run: |
-          mkdir -p twa-app && cd twa-app
-          bubblewrap init \
-            --manifest "https://alliance-crm-production.up.railway.app/manifest.json" \
-            --directory . \
-            --chromeosonly false \
-            --metaquest false
+          mkdir -p twa-app
+          cat > twa-app/twa-manifest.json << 'TWAJSON'
+          {
+            "packageId": "com.grupoRM.clinicacrm",
+            "host": "alliance-crm-production.up.railway.app",
+            "name": "Grupo RM Clínica",
+            "launcherName": "RM Clínica",
+            "display": "standalone",
+            "themeColor": "#0a0a0a",
+            "navigationColor": "#0a0a0a",
+            "backgroundColor": "#0a0a0a",
+            "startUrl": "/",
+            "iconUrl": "https://alliance-crm-production.up.railway.app/icons/icon-512.png",
+            "maskableIconUrl": "https://alliance-crm-production.up.railway.app/icons/icon-512.png",
+            "splashScreenFadeOutDuration": 300,
+            "signingKey": {
+              "path": "./keystore.jks",
+              "alias": "grupoRM"
+            },
+            "appVersion": "1",
+            "appVersionName": "1.0.0",
+            "shortcuts": [],
+            "generatorApp": "bubblewrap-cli",
+            "webManifestUrl": "https://alliance-crm-production.up.railway.app/manifest.json",
+            "isChromeOSOnly": false,
+            "isMetaQuest": false,
+            "enableNotifications": false,
+            "features": {},
+            "alphaDependencies": { "enabled": false },
+            "enableSiteSettingsShortcut": true,
+            "isTrustedWebActivity": true,
+            "serviceAccountJsonFile": ""
+          }
+          TWAJSON
+
+      - name: Inicializar projeto TWA (bubblewrap init)
+        working-directory: twa-app
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        # "yes" responde automaticamente a qualquer prompt interativo
+        run: yes "" | bubblewrap init --manifest "https://alliance-crm-production.up.railway.app/manifest.json" --directory . 2>&1
 
       - name: Gerar keystore de assinatura
+        working-directory: twa-app
         run: |
-          cd twa-app
           keytool -genkeypair -v \
             -keystore keystore.jks \
             -alias grupoRM \
@@ -50,15 +87,25 @@ jobs:
             -dname "CN=Grupo RM Clinica, OU=App, O=Grupo RM, L=Bahia, S=BA, C=BR"
 
       - name: Compilar APK
+        working-directory: twa-app
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: bubblewrap build --skipPwaValidation
+
+      - name: Verificar APK gerado
+        working-directory: twa-app
         run: |
-          cd twa-app
-          bubblewrap build \
-            --skipPwaValidation
+          echo "=== Arquivos gerados ==="
+          find . -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
+          ls -la app-release-signed.apk 2>/dev/null || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: GrupoRM-Clinica-App
-          path: twa-app/app-release-signed.apk
+          path: |
+            twa-app/app-release-signed.apk
+            twa-app/app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 90
