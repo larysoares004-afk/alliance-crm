@@ -8,6 +8,7 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,115 +18,41 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli@latest
-
-      - name: Configurar caminhos SDK/JDK para Bubblewrap
+      - name: Instalar build-tools e plataforma Android
         run: |
-          mkdir -p ~/.bubblewrap
-          echo "{\"jdkPath\": \"$JAVA_HOME\", \"androidSdkPath\": \"$ANDROID_HOME\"}" > ~/.bubblewrap/config.json
-          echo "=== Bubblewrap config ==="
-          cat ~/.bubblewrap/config.json
-          echo "=== JAVA_HOME ==="
-          echo $JAVA_HOME
-          echo "=== ANDROID_HOME ==="
-          echo $ANDROID_HOME
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
 
-      - name: Criar twa-manifest.json pré-configurado
+      - name: Gerar gradlew (wrapper)
+        working-directory: twa-android
         run: |
-          mkdir -p twa-app
-          cat > twa-app/twa-manifest.json << 'TWAJSON'
-{
-  "packageId": "com.grupoRM.clinicacrm",
-  "host": "alliance-crm-production.up.railway.app",
-  "name": "Grupo RM Clínica",
-  "launcherName": "RM Clínica",
-  "display": "standalone",
-  "themeColor": "#0a0a0a",
-  "navigationColor": "#0a0a0a",
-  "backgroundColor": "#0a0a0a",
-  "startUrl": "/",
-  "iconUrl": "https://alliance-crm-production.up.railway.app/icons/icon-512.png",
-  "maskableIconUrl": "https://alliance-crm-production.up.railway.app/icons/icon-512.png",
-  "splashScreenFadeOutDuration": 300,
-  "signingKey": {
-    "path": "./keystore.jks",
-    "alias": "grupoRM"
-  },
-  "appVersion": "1",
-  "appVersionName": "1.0.0",
-  "shortcuts": [],
-  "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://alliance-crm-production.up.railway.app/manifest.json",
-  "isChromeOSOnly": false,
-  "isMetaQuest": false,
-  "enableNotifications": false,
-  "features": {},
-  "alphaDependencies": { "enabled": false },
-  "enableSiteSettingsShortcut": true,
-  "isTrustedWebActivity": true,
-  "serviceAccountJsonFile": ""
-}
-TWAJSON
-
-      - name: Verificar se manifest está acessível
-        run: |
-          curl -s -o /dev/null -w "HTTP Status manifest.json: %{http_code}\n" \
-            https://alliance-crm-production.up.railway.app/manifest.json || true
-
-      - name: Inicializar projeto TWA (bubblewrap init)
-        working-directory: twa-app
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-        run: |
-          # "yes" responde Y para todos os prompts; 2>&1 captura stderr também
-          yes | bubblewrap init \
-            --manifest "https://alliance-crm-production.up.railway.app/manifest.json" \
-            --directory . 2>&1
-          echo "Exit code bubblewrap init: $?"
+          # Baixar Gradle 8.4 para gerar o wrapper
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O gradle.zip
+          unzip -q gradle.zip
+          ./gradle-8.4/bin/gradle wrapper
+          chmod +x gradlew
           ls -la
 
-      - name: Gerar keystore de assinatura
-        working-directory: twa-app
-        run: |
-          keytool -genkeypair -v \
-            -keystore keystore.jks \
-            -alias grupoRM \
-            -keyalg RSA -keysize 2048 \
-            -validity 10000 \
-            -storepass grupoRM2026 \
-            -keypass grupoRM2026 \
-            -dname "CN=Grupo RM Clinica, OU=App, O=Grupo RM, L=Bahia, S=BA, C=BR"
+      - name: Criar local.properties
+        working-directory: twa-android
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Compilar APK
-        working-directory: twa-app
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-        run: bubblewrap build --skipPwaValidation
+      - name: Build APK (debug — sem necessidade de keystore)
+        working-directory: twa-android
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Localizar APK gerado
-        working-directory: twa-app
         run: |
-          echo "=== Procurando APK ==="
-          find . -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
+          echo "=== APKs gerados ==="
+          find twa-android -name "*.apk" 2>/dev/null
+          ls -lh twa-android/app/build/outputs/apk/debug/ 2>/dev/null || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: GrupoRM-Clinica-App
-          path: |
-            twa-app/app-release-signed.apk
-            twa-app/app/build/outputs/apk/**/*.apk
-          if-no-files-found: warn
+          path: twa-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 90
