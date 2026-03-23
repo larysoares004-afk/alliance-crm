@@ -1,0 +1,64 @@
+name: Gerar APK Android (gratuito)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Inicializar projeto TWA
+        run: |
+          mkdir -p twa-app && cd twa-app
+          bubblewrap init \
+            --manifest "https://alliance-crm-production.up.railway.app/manifest.json" \
+            --directory . \
+            --chromeosonly false \
+            --metaquest false
+
+      - name: Gerar keystore de assinatura
+        run: |
+          cd twa-app
+          keytool -genkeypair -v \
+            -keystore keystore.jks \
+            -alias grupoRM \
+            -keyalg RSA -keysize 2048 \
+            -validity 10000 \
+            -storepass grupoRM2026 \
+            -keypass grupoRM2026 \
+            -dname "CN=Grupo RM Clinica, OU=App, O=Grupo RM, L=Bahia, S=BA, C=BR"
+
+      - name: Compilar APK
+        run: |
+          cd twa-app
+          bubblewrap build \
+            --skipPwaValidation
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrupoRM-Clinica-App
+          path: twa-app/app-release-signed.apk
+          if-no-files-found: warn
+          retention-days: 30
