@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -63,10 +66,22 @@ jobs:
             exit 1
           fi
 
-      - name: Upload APK
+      - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: GrupoRM-Clinica-App
           path: GrupoRM-Clinica.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publicar Release pública (link direto de download)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: "Grupo RM Clínica — App Android"
+          body: "APK mais recente gerado automaticamente. Baixe e instale no Android."
+          files: GrupoRM-Clinica.apk
+          make_latest: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
