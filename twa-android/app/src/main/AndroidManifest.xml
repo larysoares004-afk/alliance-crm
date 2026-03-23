@@ -5,7 +5,6 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
@@ -42,7 +41,7 @@
             <!-- File provider -->
             <meta-data
                 android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
-                android:value="com.grupoRM.clinicacrm.fileprovider" />
+                android:value="com.gruporm.clinicacrm.fileprovider" />
 
             <!-- Asset links -->
             <meta-data
@@ -66,7 +65,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.grupoRM.clinicacrm.fileprovider"
+            android:authorities="com.gruporm.clinicacrm.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

@@ -41,7 +41,7 @@ jobs:
 
       - name: Build APK (debug — sem necessidade de keystore)
         working-directory: twa-android
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --info 2>&1 | tail -100
 
       - name: Localizar APK gerado
         run: |
