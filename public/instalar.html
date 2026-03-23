@@ -7,130 +7,221 @@
 <meta name="theme-color" content="#0a0a0a">
 <title>Instalar App — Grupo RM Clínica</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
-.logo{width:110px;height:110px;border-radius:26px;background:#111;border:2px solid #C9A84C;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 0 40px rgba(201,168,76,.35)}
-.logo img{width:100%;height:100%;object-fit:cover;border-radius:24px}
-h1{font-size:22px;font-weight:800;color:#fff;margin-bottom:4px}
-.sub{font-size:14px;color:#888;margin-bottom:28px}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 20px 48px;text-align:center}
 
-/* Botão Android */
-.btn-instalar{display:none;width:100%;max-width:320px;padding:16px 24px;background:linear-gradient(135deg,#C9A84C,#a8873d);color:#000;font-weight:800;font-size:16px;border:none;border-radius:16px;cursor:pointer;text-decoration:none;margin:0 auto 24px;box-shadow:0 4px 24px rgba(201,168,76,.4);-webkit-tap-highlight-color:transparent;align-items:center;justify-content:center;gap:10px}
+.logo{width:100px;height:100px;border-radius:24px;border:2px solid #C9A84C;margin:0 auto 16px;overflow:hidden;box-shadow:0 0 40px rgba(201,168,76,.3)}
+.logo img{width:100%;height:100%;object-fit:cover}
+h1{font-size:22px;font-weight:800;margin-bottom:4px}
+.sub{font-size:14px;color:#777;margin-bottom:32px}
+
+/* Tabs */
+.tabs{display:flex;gap:8px;margin-bottom:28px;background:#111;padding:5px;border-radius:14px;border:1px solid #222;width:100%;max-width:320px}
+.tab{flex:1;padding:10px 4px;border-radius:10px;border:none;background:none;color:#777;font-size:14px;font-weight:700;cursor:pointer;transition:.2s}
+.tab.on{background:#C9A84C;color:#000}
+
+/* Conteúdo de cada tab */
+.panel{display:none;max-width:340px;width:100%}
+.panel.on{display:block}
+
+/* Botão Android automático */
+.btn-gold{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px;background:linear-gradient(135deg,#C9A84C,#a8873d);color:#000;font-weight:800;font-size:16px;border:none;border-radius:16px;cursor:pointer;margin-bottom:20px;box-shadow:0 4px 24px rgba(201,168,76,.4)}
 
 /* Card de passos */
-.card{background:#111;border-radius:20px;padding:22px 20px;max-width:340px;width:100%;margin:0 auto;border:1px solid #222;text-align:left}
-.card h3{font-size:14px;color:#C9A84C;font-weight:700;margin-bottom:16px;text-align:center}
-.step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.card{background:#111;border-radius:20px;padding:20px;border:1px solid #1e1e1e;text-align:left;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:700;color:#C9A84C;margin-bottom:16px;text-align:center;text-transform:uppercase;letter-spacing:.5px}
+
+.step{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
 .step:last-child{margin-bottom:0}
-.step-num{width:28px;height:28px;border-radius:50%;background:#C9A84C;color:#000;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
-.step p{font-size:13px;color:#bbb;line-height:1.55}
-.step strong{color:#fff}
-.step .icon{font-size:17px;vertical-align:-2px}
+.num{width:30px;height:30px;border-radius:50%;background:#C9A84C;color:#000;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-txt{flex:1;padding-top:5px}
+.step-txt p{font-size:13px;color:#bbb;line-height:1.6}
+.step-txt strong{color:#fff}
+.step-txt .hint{font-size:11px;color:#555;margin-top:3px}
 
-/* Badge instalado */
-.ok-badge{display:none;background:#16a34a;color:#fff;padding:14px 24px;border-radius:14px;font-weight:700;font-size:15px;margin-top:8px;max-width:320px;width:100%}
+/* Imagem de exemplo */
+.img-hint{display:flex;align-items:center;justify-content:center;gap:6px;background:#1a1a1a;border-radius:10px;padding:10px 14px;margin-top:8px;font-size:12px;color:#888}
+.img-hint .icon{font-size:20px}
 
-/* Separador */
-.sep{font-size:12px;color:#444;margin:18px 0 20px}
+/* Badge OK */
+.ok-badge{display:none;background:#16a34a;color:#fff;padding:16px 24px;border-radius:14px;font-weight:700;font-size:15px;width:100%;max-width:340px;margin-bottom:20px}
 
-/* Link de acesso */
-.link-acesso{display:block;font-size:12px;color:#555;margin-top:24px;text-decoration:none}
-.link-acesso span{color:#C9A84C}
+/* Download link */
+.apk-link{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:14px;background:#111;border:2px solid #C9A84C;border-radius:16px;color:#C9A84C;font-weight:700;font-size:15px;text-decoration:none;margin-bottom:12px}
 
-/* Esconder por padrão */
-#ios-steps{display:none}
-#android-steps{display:none}
+.note{font-size:12px;color:#444;max-width:320px;line-height:1.6;margin-top:4px}
+.divider{width:100%;max-width:320px;height:1px;background:#1e1e1e;margin:24px 0}
 </style>
 </head>
 <body>
 
 <div class="logo">
-  <img src="/icons/icon-512.png" alt="RM Clínica" onerror="this.style.display='none';this.parentElement.innerHTML='<span style=\'font-size:48px\'>🏥</span>'">
+  <img src="/icons/icon-512.png" alt="RM Clínica" onerror="this.parentElement.innerHTML='🏥'">
 </div>
 <h1>Grupo RM Clínica</h1>
-<p class="sub">Instale o app gratuito no seu celular</p>
+<p class="sub">Instale o app no seu celular</p>
 
-<!-- Android: botão automático -->
-<button id="btn-android" class="btn-instalar" onclick="instalar()">
-  ⬇️ Instalar App Agora
-</button>
+<!-- Badge instalado -->
+<div class="ok-badge" id="ok-badge">✅ App já instalado!</div>
 
-<!-- iOS: passo a passo -->
-<div id="ios-steps" class="card">
-  <h3>🍎 Instalar no iPhone / iPad</h3>
-  <div class="step">
-    <div class="step-num">1</div>
-    <p>Toque no botão <strong>Compartilhar</strong> <span class="icon">⬆️</span> na barra inferior do Safari</p>
-  </div>
-  <div class="step">
-    <div class="step-num">2</div>
-    <p>Role a lista e toque em <strong>"Adicionar à Tela de Início"</strong></p>
-  </div>
-  <div class="step">
-    <div class="step-num">3</div>
-    <p>Toque em <strong>"Adicionar"</strong> no canto superior direito</p>
-  </div>
-  <div class="step">
-    <div class="step-num">4</div>
-    <p>O ícone do <strong>RM Clínica</strong> aparece na sua tela inicial ✅</p>
+<!-- Tabs de seleção de plataforma -->
+<div class="tabs" id="tabs">
+  <button class="tab on" onclick="showTab('android',this)">🤖 Android</button>
+  <button class="tab"    onclick="showTab('ios',this)">🍎 iPhone</button>
+</div>
+
+<!-- ============ ANDROID ============ -->
+<div class="panel on" id="panel-android">
+
+  <!-- Botão automático (só aparece se o browser oferecer) -->
+  <button id="btn-instalar" class="btn-gold" style="display:none" onclick="instalar()">
+    ⬇️ Instalar App Agora
+  </button>
+
+  <!-- Download direto do APK -->
+  <a class="apk-link" href="https://github.com/larysoares004-afk/alliance-crm/releases/download/latest-apk/GrupoRM-Clinica.apk">
+    ⬇️ Baixar APK (Android)
+  </a>
+  <p class="note">Toque no link acima para baixar o arquivo APK e instalar diretamente no Android — sem precisar da Play Store.</p>
+
+  <div class="divider"></div>
+
+  <div class="card">
+    <div class="card-title">Como instalar o APK</div>
+    <div class="step">
+      <div class="num">1</div>
+      <div class="step-txt">
+        <p>Toque no link de download acima e aguarde o arquivo <strong>GrupoRM-Clinica.apk</strong> baixar</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="step-txt">
+        <p>Abra o arquivo baixado (aparece na barra de notificações ou em <strong>Downloads</strong>)</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <div class="step-txt">
+        <p>Se aparecer aviso de segurança, toque em <strong>"Instalar mesmo assim"</strong> ou vá em Configurações → Segurança → <strong>Fontes desconhecidas</strong></p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">4</div>
+      <div class="step-txt">
+        <p>Toque em <strong>"Instalar"</strong> e pronto! O ícone aparece na sua tela inicial ✅</p>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- Android sem prompt: passo a passo -->
-<div id="android-steps" class="card">
-  <h3>🤖 Instalar no Android (Chrome)</h3>
-  <div class="step">
-    <div class="step-num">1</div>
-    <p>Toque nos <strong>3 pontos ⋮</strong> no canto superior direito do Chrome</p>
+<!-- ============ iPHONE ============ -->
+<div class="panel" id="panel-ios">
+
+  <div class="card">
+    <div class="card-title">⚠️ Importante: Use o Safari</div>
+    <div class="step">
+      <div class="num" style="background:#fff;color:#000">!</div>
+      <div class="step-txt">
+        <p>No iPhone, o app só pode ser instalado pelo <strong>Safari</strong> (não funciona pelo Chrome ou outro navegador)</p>
+        <p class="hint">Se você está vendo isso no Chrome, copie o link e abra no Safari</p>
+      </div>
+    </div>
   </div>
-  <div class="step">
-    <div class="step-num">2</div>
-    <p>Toque em <strong>"Adicionar à tela inicial"</strong> ou <strong>"Instalar app"</strong></p>
+
+  <div class="card">
+    <div class="card-title">📲 Como instalar no iPhone</div>
+
+    <div class="step">
+      <div class="num">1</div>
+      <div class="step-txt">
+        <p>No Safari, toque no botão <strong>Compartilhar</strong> na barra inferior</p>
+        <div class="img-hint">
+          <span class="icon">⬜</span>
+          <span>Ícone de caixa com seta pra cima ↑ na barra de baixo do Safari</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">2</div>
+      <div class="step-txt">
+        <p>Role a lista de opções para baixo até encontrar</p>
+        <div class="img-hint">
+          <span class="icon">➕</span>
+          <span><strong>"Adicionar à Tela de Início"</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">3</div>
+      <div class="step-txt">
+        <p>Toque em <strong>"Adicionar"</strong> no canto superior direito da tela que abrir</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">4</div>
+      <div class="step-txt">
+        <p>Pronto! O ícone do <strong>RM Clínica</strong> aparece na sua tela inicial ✅</p>
+        <p class="hint">Abre em tela cheia, como um app normal — sem barra do Safari</p>
+      </div>
+    </div>
   </div>
-  <div class="step">
-    <div class="step-num">3</div>
-    <p>Confirme tocando em <strong>"Instalar"</strong> ou <strong>"Adicionar"</strong></p>
+
+  <div class="card" style="border-color:#333">
+    <div class="card-title" style="color:#888">Por que não tem APK para iPhone?</div>
+    <div class="step">
+      <div class="num" style="background:#333;color:#fff;font-size:16px">ℹ</div>
+      <div class="step-txt">
+        <p style="color:#666">A Apple não permite instalar apps fora da App Store no iPhone. O método acima é o equivalente gratuito — cria um ícone real na tela inicial que abre em tela cheia, igual a um app nativo.</p>
+      </div>
+    </div>
   </div>
-  <div class="step">
-    <div class="step-num">4</div>
-    <p>O ícone aparece na sua tela inicial ✅</p>
-  </div>
+
 </div>
 
-<div class="ok-badge" id="ok-badge">✅ App instalado com sucesso!</div>
-
-<a class="link-acesso" href="/" target="_blank">
-  Ou acesse pelo navegador: <span>alliance-crm-production.up.railway.app</span>
-</a>
+<!-- Aviso se não é Safari no iOS -->
+<div id="ios-nao-safari" style="display:none;max-width:340px;width:100%;background:#1a1100;border:1px solid #7a5c00;border-radius:16px;padding:16px;margin-top:16px;text-align:left">
+  <p style="font-size:13px;color:#fbbf24;font-weight:700;margin-bottom:6px">⚠️ Você está no Chrome — use o Safari!</p>
+  <p style="font-size:12px;color:#999;line-height:1.6">Copie o endereço abaixo e cole no Safari para conseguir instalar:</p>
+  <p style="font-size:13px;color:#C9A84C;font-weight:700;margin-top:8px;word-break:break-all">alliance-crm-production.up.railway.app/app</p>
+</div>
 
 <script>
 var deferredPrompt = null;
+
 var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 var isAndroid = /android/i.test(navigator.userAgent);
+var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 var isStandalone = window.navigator.standalone === true ||
                    window.matchMedia('(display-mode: standalone)').matches;
 
+// Mostrar badge se já instalado
 if (isStandalone) {
   document.getElementById('ok-badge').style.display = 'block';
-} else if (isIOS) {
-  document.getElementById('ios-steps').style.display = 'block';
-} else {
-  // Android ou desktop: mostra os passos manuais enquanto espera o prompt
-  document.getElementById('android-steps').style.display = 'block';
+  document.getElementById('tabs').style.display = 'none';
+  document.querySelectorAll('.panel').forEach(function(p){ p.style.display = 'none'; });
+}
+// Selecionar tab automaticamente pela plataforma
+else if (isIOS) {
+  showTab('ios', document.querySelector('.tab:last-child'));
+  // Detectar se não é Safari
+  if (!isSafari) {
+    document.getElementById('ios-nao-safari').style.display = 'block';
+  }
 }
 
+// Prompt automático Android (Chrome)
 window.addEventListener('beforeinstallprompt', function(e) {
   e.preventDefault();
   deferredPrompt = e;
-  // Se o prompt automático estiver disponível, mostra o botão dourado
-  document.getElementById('android-steps').style.display = 'none';
-  var btn = document.getElementById('btn-android');
-  btn.style.display = 'flex';
+  document.getElementById('btn-instalar').style.display = 'flex';
 });
 
 window.addEventListener('appinstalled', function() {
-  document.getElementById('btn-android').style.display = 'none';
-  document.getElementById('android-steps').style.display = 'none';
+  document.getElementById('btn-instalar').style.display = 'none';
   document.getElementById('ok-badge').style.display = 'block';
 });
 
@@ -138,12 +229,19 @@ function instalar() {
   if (deferredPrompt) {
     deferredPrompt.prompt();
     deferredPrompt.userChoice.then(function(r) {
-      if (r.outcome === 'accepted') {
-        document.getElementById('btn-android').style.display = 'none';
-      }
       deferredPrompt = null;
+      if (r.outcome === 'accepted') {
+        document.getElementById('btn-instalar').style.display = 'none';
+      }
     });
   }
+}
+
+function showTab(id, el) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('on'); });
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('on'); });
+  el.classList.add('on');
+  document.getElementById('panel-' + id).classList.add('on');
 }
 </script>
 </body>
