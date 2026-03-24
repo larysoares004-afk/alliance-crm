@@ -44,17 +44,22 @@ jobs:
 
       - name: Gerar ícones do APK (logo Alliance)
         run: |
+          sudo apt-get install -y imagemagick 2>/dev/null || true
           SRC="public/icons/icon-512.png"
           RES="twa-android/app/src/main/res"
+          echo "=== Verificando fonte ==="
+          ls -lh "$SRC" || { echo "ERRO: $SRC nao encontrado"; find . -name "icon-512.png" 2>/dev/null; exit 1; }
           mkdir -p "$RES/mipmap-mdpi"    "$RES/mipmap-hdpi"
           mkdir -p "$RES/mipmap-xhdpi"   "$RES/mipmap-xxhdpi"
           mkdir -p "$RES/mipmap-xxxhdpi"
-          convert "$SRC" -resize 48x48   "$RES/mipmap-mdpi/ic_launcher.png"
-          convert "$SRC" -resize 72x72   "$RES/mipmap-hdpi/ic_launcher.png"
-          convert "$SRC" -resize 96x96   "$RES/mipmap-xhdpi/ic_launcher.png"
-          convert "$SRC" -resize 144x144 "$RES/mipmap-xxhdpi/ic_launcher.png"
-          convert "$SRC" -resize 192x192 "$RES/mipmap-xxxhdpi/ic_launcher.png"
-          echo "Ícones gerados com sucesso!"
+          CONV=$(command -v magick || command -v convert)
+          echo "Usando: $CONV"
+          $CONV "$SRC" -resize 48x48   "$RES/mipmap-mdpi/ic_launcher.png"
+          $CONV "$SRC" -resize 72x72   "$RES/mipmap-hdpi/ic_launcher.png"
+          $CONV "$SRC" -resize 96x96   "$RES/mipmap-xhdpi/ic_launcher.png"
+          $CONV "$SRC" -resize 144x144 "$RES/mipmap-xxhdpi/ic_launcher.png"
+          $CONV "$SRC" -resize 192x192 "$RES/mipmap-xxxhdpi/ic_launcher.png"
+          echo "=== Ícones gerados ==="
           ls -lh "$RES"/mipmap-*/ic_launcher.png
 
       - name: Build APK (debug)
