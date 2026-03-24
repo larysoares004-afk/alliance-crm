@@ -198,11 +198,9 @@ var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 var isStandalone = window.navigator.standalone === true ||
                    window.matchMedia('(display-mode: standalone)').matches;
 
-// Mostrar badge se já instalado
+// Se já está instalado e abrindo como app → ir direto pro CRM
 if (isStandalone) {
-  document.getElementById('ok-badge').style.display = 'block';
-  document.getElementById('tabs').style.display = 'none';
-  document.querySelectorAll('.panel').forEach(function(p){ p.style.display = 'none'; });
+  window.location.replace('/');
 }
 // Selecionar tab automaticamente pela plataforma
 else if (isIOS) {
