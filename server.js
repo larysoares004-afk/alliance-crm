@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express    = require('express');
+const webpush    = require('web-push');
 const { Database: _WasmDB } = require('node-sqlite3-wasm');
 // Shim: aceita args variádicos como better-sqlite3
 function Database(path) {
@@ -27,6 +28,11 @@ const fs         = require('fs');
 const app  = express();
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'alliance_crm_secret_2024_troque_isto';
+
+// ── Web Push (VAPID) ──────────────────────────────────────────────────────────
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || 'BP_rJ02L19z2zzg7SmsoQa0gLh8WnH1N1KZapjBxa17mtOGh88jQ5NAJ0k4m20KpCs5ouVuxj-0OMMEihwp63No';
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'wV8WTNS7bXjDjnwEf9nDl0-unfXlFoAbW0KTk8opCQU';
+webpush.setVapidDetails('mailto:admin@gruporm.com', VAPID_PUBLIC, VAPID_PRIVATE);
 const DB_PATH    = process.env.DB_PATH || (process.platform === 'win32' ? path.join(__dirname, 'alliance.db') : '/data/alliance.db');
 
 // ── Garantir diretório do banco ───────────────────────────────────────────────
@@ -226,6 +232,8 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
     maxAge: 8 * 3600 * 1000,
   });
 
+  // Notificar admins/gestores sobre novo acesso (assíncrono, não bloqueia)
+  setImmediate(() => { try { notificarNovoAcesso(u.nome, u.role); } catch(e) {} });
   res.json({ ok: true, user: payload, permissoes: PERMISSOES[u.role] || [], token });
 });
 
@@ -542,6 +550,104 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// PUSH NOTIFICATIONS
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Tabela de subscriptions
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    endpoint   TEXT NOT NULL UNIQUE,
+    keys_auth  TEXT NOT NULL,
+    keys_p256dh TEXT NOT NULL,
+    criado_em  TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+} catch(e) {}
+
+// Chave pública VAPID para o cliente
+app.get('/api/push/vapid-key', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC });
+});
+
+// Salvar subscription
+app.post('/api/push/subscribe', auth, (req, res) => {
+  const { endpoint, keys } = req.body;
+  if (!endpoint || !keys) return res.status(400).json({ error: 'Dados inválidos' });
+  try {
+    db.prepare(`INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, keys_auth, keys_p256dh)
+      VALUES (?, ?, ?, ?)`).run(req.user.id, endpoint, keys.auth, keys.p256dh);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Remover subscription
+app.post('/api/push/unsubscribe', auth, (req, res) => {
+  const { endpoint } = req.body;
+  db.prepare('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint=?').run(req.user.id, endpoint);
+  res.json({ ok: true });
+});
+
+// Enviar push para usuários por role
+function pushParaRoles(roles, titulo, corpo, url) {
+  const subs = db.prepare('SELECT ps.* FROM push_subscriptions ps JOIN usuarios u ON u.id=ps.user_id WHERE u.role IN (' + roles.map(()=>'?').join(',') + ')').all(roles);
+  subs.forEach(sub => {
+    const payload = JSON.stringify({ title: titulo, body: corpo, url: url || '/' });
+    webpush.sendNotification({ endpoint: sub.endpoint, keys: { auth: sub.keys_auth, p256dh: sub.keys_p256dh } }, payload)
+      .catch(e => {
+        if (e.statusCode === 410 || e.statusCode === 404) {
+          db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(sub.endpoint);
+        }
+      });
+  });
+}
+
+// Notificar novo acesso (chamado no login)
+function notificarNovoAcesso(nomeUsuario, role) {
+  if (role === 'admin') return; // admin não notifica a si mesmo
+  pushParaRoles(['admin', 'gestor'], '🔐 Novo acesso ao CRM', `${nomeUsuario} acabou de entrar no sistema`, '/');
+}
+
+// ── Cron jobs de notificação ──────────────────────────────────────────────────
+
+// A cada 1 hora: verificar leads e mensagens sem resposta
+setInterval(() => {
+  const agora = new Date();
+
+  // 1) Leads na última hora
+  try {
+    const leads = db.prepare(`SELECT COUNT(*) as c FROM leads WHERE criado_em >= datetime('now','-1 hour','localtime')`).get();
+    if (leads && leads.c > 0) {
+      pushParaRoles(['admin','gestor','gerente'],
+        `📋 ${leads.c} novo${leads.c>1?'s':''} lead${leads.c>1?'s':''} na última hora`,
+        `Você tem ${leads.c} lead${leads.c>1?'s':''} aguardando atendimento no CRM`,
+        '/');
+    }
+  } catch(e) {}
+
+  // 2) Mensagens sem resposta há mais de 1 hora (admin notifica)
+  try {
+    const semResposta = db.prepare(`
+      SELECT COUNT(DISTINCT lead_id) as c FROM chat_messages
+      WHERE remetente_role != 'admin' AND remetente_role != 'gestor'
+        AND criado_em <= datetime('now','-1 hour','localtime')
+        AND lead_id NOT IN (
+          SELECT DISTINCT lead_id FROM chat_messages
+          WHERE (remetente_role='admin' OR remetente_role='gestor')
+            AND criado_em >= datetime('now','-1 hour','localtime')
+        )
+    `).get();
+    if (semResposta && semResposta.c > 0) {
+      pushParaRoles(['admin','gestor'],
+        `⚠️ ${semResposta.c} lead${semResposta.c>1?'s':''} sem resposta`,
+        `Há mensagem${semResposta.c>1?'ns':''} de cliente${semResposta.c>1?'s':''} sem resposta há mais de 1 hora`,
+        '/');
+    }
+  } catch(e) {}
+
+}, 60 * 60 * 1000); // 1 hora
 
 // ── Iniciar servidor ──────────────────────────────────────────────────────────
 

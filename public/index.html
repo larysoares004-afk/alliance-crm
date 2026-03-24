@@ -1881,6 +1881,8 @@ function iniciarSistema(){
     if(metaCard && ['admin','gestor','gerente'].includes(currentUser.role)) metaCard.style.display='block';
     // Verificar agendamentos de hoje
     setTimeout(verificarAgendamentosHoje, 1500);
+    // Ativar notificações push (após login)
+    setTimeout(ativarNotificacoesPush, 2000);
     goTo('dashboard');
   } catch(e) {
     console.error('iniciarSistema error:', e);
@@ -5316,6 +5318,50 @@ window.addEventListener('appinstalled', function() {
   if(btn) btn.style.display = 'none';
   _pwaPrompt = null;
 });
+
+// ── Notificações Push ─────────────────────────────────────────────────────────
+var _pushAtivo = false;
+
+async function ativarNotificacoesPush() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (_pushAtivo) return;
+
+    // Buscar chave pública VAPID
+    const resp = await fetch('/api/push/vapid-key');
+    const { publicKey } = await resp.json();
+
+    // Pedir permissão de notificação
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+    }
+
+    // Enviar subscription para o servidor
+    const subJson = sub.toJSON();
+    await api('POST', '/api/push/subscribe', {
+      endpoint: subJson.endpoint,
+      keys: subJson.keys
+    });
+    _pushAtivo = true;
+  } catch(e) {
+    // Silencioso — notificações são opcionais
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
 
 function instalarApp() {
   var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
