@@ -3518,28 +3518,67 @@ async function carregarConversasMeta() {
 async function openChatMeta(de, nome) {
   uiState.activeChat = 'meta-' + de;
   uiState.metaChatDe = de;
+  uiState.metaChatNome = nome;
   renderAttList();
+
+  // Montar interface do chat
+  const fone = (de||'').replace(/\D/g,'');
+  document.getElementById('attMain').innerHTML = `
+    <div class="att-chat-hdr">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="att-av">${escHtml((nome||'?').charAt(0))}</div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--z900)">${escHtml(nome||de)}</div>
+          <div style="font-size:11px;color:var(--z500)">+${fone} · via Meta Oficial ✅</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <a href="https://wa.me/${fone}" target="_blank" class="btn btn-green" style="font-size:11px;padding:5px 10px;text-decoration:none">💬 WhatsApp</a>
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="finalizeChat()">✅ Finalizar</button>
+      </div>
+    </div>
+    <div class="msgs" id="msgBox" style="flex:1;overflow-y:auto;padding:12px"></div>
+    <div class="msg-inp-row">
+      <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button class="send-btn" onclick="sendMsg()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>`;
+
   try {
     const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
     S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
-    renderMsgsMeta(de, nome);
+    renderMsgsMeta(de);
   } catch(e) { console.error(e); }
+
+  // Polling a cada 5s para novas mensagens
+  if (window._metaPollTimer) clearInterval(window._metaPollTimer);
+  window._metaPollTimer = setInterval(async () => {
+    if (uiState.metaChatDe !== de) { clearInterval(window._metaPollTimer); return; }
+    try {
+      const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
+      S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+      renderMsgsMeta(de);
+    } catch(e) {}
+  }, 5000);
 }
 
-function renderMsgsMeta(de, nome) {
+function renderMsgsMeta(de) {
   const msgs = (state.metaMensagens || {})[de] || [];
   const box = document.getElementById('msgBox');
   if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = msgs.map(m => {
     const enviada = m.direcao === 'enviada';
-    return `<div class="msg ${enviada ? 'out' : 'in'}" style="margin:6px 12px;display:flex;flex-direction:column;align-items:${enviada?'flex-end':'flex-start'}">
-      <div style="max-width:80%;background:${enviada?'#dcf8c6':'#fff'};border-radius:12px;padding:8px 12px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+    const hora = (m.criado_em||'').slice(11,16);
+    return `<div style="margin:4px 8px;display:flex;flex-direction:column;align-items:${enviada?'flex-end':'flex-start'}">
+      <div style="max-width:80%;background:${enviada?'#dcf8c6':'#fff'};border-radius:12px;padding:8px 12px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.1)">
         ${escHtml(m.texto||'')}
-        <div style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right">${(m.criado_em||'').slice(11,16)}</div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right">${hora}</div>
       </div>
     </div>`;
-  }).join('');
-  box.scrollTop = box.scrollHeight;
+  }).join('') || '<div style="text-align:center;padding:24px;color:var(--z400);font-size:12px">Nenhuma mensagem ainda</div>';
+  if (atBottom) box.scrollTop = box.scrollHeight;
 }
 
 function getAttChats(canal) {
@@ -3673,24 +3712,35 @@ function renderAttList(){
     return;
   }
 
+  // Guardar mapa global para evitar problemas com caracteres especiais no onclick
+  window._attChatsMap = {};
+  filtered.forEach((c,i) => { window._attChatsMap[i] = c; });
+
   document.getElementById('attList').innerHTML=filtered.length===0
     ?`<div style="text-align:center;padding:24px;color:var(--z400);font-size:12px">Nenhuma mensagem ainda</div>`
-    :filtered.map(c=>`
-    <div class="att-item${uiState.activeChat===c.id?' on':''}" onclick="${c.isMeta?`openChatMeta('${c.phone}','${c.name}')`:`openChat('${c.id}','${c.name}','${c.phone}','${c.accountName}')`}">
-      <div class="att-av">${c.name.charAt(0)}</div>
+    :filtered.map((c,i)=>`
+    <div class="att-item${uiState.activeChat===c.id?' on':''}" onclick="_abrirConversa(${i})" style="cursor:pointer">
+      <div class="att-av">${escHtml(c.name.charAt(0))}</div>
       <div class="att-info">
         <div style="display:flex;justify-content:space-between">
-          <div class="att-name">${c.name}</div>
+          <div class="att-name">${escHtml(c.name)}</div>
           <span style="font-size:9px;color:var(--z400)">${c.time}</span>
         </div>
-        <div class="att-msg">${c.msg}</div>
+        <div class="att-msg">${escHtml(c.msg||'')}</div>
         <div class="att-meta">
-          <span class="badge" style="background:${STATUS_CHAT[c.status].bg};color:${STATUS_CHAT[c.status].col}">${STATUS_CHAT[c.status].lbl}</span>
+          <span class="badge" style="background:${STATUS_CHAT[c.status||'active'].bg};color:${STATUS_CHAT[c.status||'active'].col}">${STATUS_CHAT[c.status||'active'].lbl}</span>
           ${c.unread>0?`<span style="width:16px;height:16px;border-radius:50%;background:var(--indigo);color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center">${c.unread}</span>`:''}
-          <span style="font-size:8px;color:var(--z400);background:var(--z100);padding:1px 5px;border-radius:4px">${c.accountName}</span>
+          <span style="font-size:8px;color:var(--z400);background:var(--z100);padding:1px 5px;border-radius:4px">${escHtml(c.accountName||'')}</span>
         </div>
       </div>
     </div>`).join('');
+}
+
+function _abrirConversa(idx) {
+  const c = window._attChatsMap && window._attChatsMap[idx];
+  if (!c) return;
+  if (c.isMeta) openChatMeta(c.phone, c.name);
+  else openChat(c.id, c.name, c.phone, c.accountName);
 }
 
 function openChat(id, name, phone, accountName=''){

@@ -541,9 +541,16 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       const contato  = contatos.find(c => c.wa_id === de);
       const nome     = contato?.profile?.name || de;
 
+      // Usa timestamp da Meta convertido para horário de Brasília (UTC-3)
+      const tsMeta   = msg.timestamp ? parseInt(msg.timestamp) : Math.floor(Date.now()/1000);
+      const dtBrasil = new Date(tsMeta * 1000);
+      dtBrasil.setHours(dtBrasil.getHours() - 3);
+      const criadoEm = dtBrasil.toISOString().replace('T',' ').slice(0,19);
+
       try {
-        db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao)
-                    VALUES (?,?,?,?,?,'recebida')`).run(wamid, de, nome, texto, tipo);
+        db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
+                    VALUES (?,?,?,?,?,'recebida',?)`).run(wamid, de, nome, texto, tipo, criadoEm);
+        console.log(`📩 WPP recebido de ${nome} (${de}): ${texto}`);
       } catch(e) { console.error('Erro ao salvar msg wpp:', e.message); }
     });
   } catch(e) { console.error('Erro webhook wpp:', e.message); }
