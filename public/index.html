@@ -1107,8 +1107,15 @@ select.inp{cursor:pointer}
 
 <div class="view" id="view-atendimentos">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-    <div><div class="ptitle">Atendimentos</div><div class="psub">WhatsApp e Instagram Direct</div></div>
-    <div style="display:flex;background:var(--z100);border-radius:10px;padding:3px;gap:2px">
+    <div>
+      <div class="ptitle">Atendimentos</div>
+      <div class="psub">WhatsApp e Instagram Direct</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onclick="sincronizarHistoricoMeta()" class="btn btn-ghost" style="font-size:11px;padding:5px 10px" title="Buscar histórico de mensagens">
+        🔄 Sincronizar
+      </button>
+      <div style="display:flex;background:var(--z100);border-radius:10px;padding:3px;gap:2px">
       <button id="attTabWpp" onclick="setAttTab('whatsapp',this)"
         style="padding:6px 16px;border-radius:7px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .2s">
         💬 WhatsApp
@@ -1117,6 +1124,7 @@ select.inp{cursor:pointer}
         style="padding:6px 16px;border-radius:7px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;background:none;color:var(--z500);transition:all .2s">
         📸 Instagram
       </button>
+    </div>
     </div>
   </div>
   <div class="att-layout">
@@ -5146,22 +5154,48 @@ async function carregarWppAuto() {
 }
 
 async function salvarWppAuto() {
-  const evolUrl      = document.getElementById('wppAutoUrl')?.value?.trim();
-  const evolKey      = document.getElementById('wppAutoKey')?.value?.trim();
-  const evolInstance = document.getElementById('wppAutoInst')?.value?.trim();
-  const mensagem     = document.getElementById('wppAutoMsg')?.value?.trim();
-  const ativo        = document.getElementById('wppAutoAtivo')?.checked || false;
-  if (!evolUrl || !evolKey || !evolInstance) { toast('Preencha URL, API Key e Instância', 'error'); return; }
-  const st = document.getElementById('wppAutoStatus');
+  const tipo     = uiState.wppTipo || 'meta';
+  const mensagem = document.getElementById('wppAutoMsg')?.value?.trim();
+  const ativo    = document.getElementById('wppAutoAtivo')?.checked || false;
+  const st       = document.getElementById('wppAutoStatus');
   if (st) st.textContent = 'Salvando...';
   try {
-    await api('PUT', '/api/config/whatsapp-auto', { evolUrl, evolKey, evolInstance, mensagem, ativo });
-    toast('Automação salva com sucesso!', 'success');
-    if (st) st.textContent = 'Salvo ✅';
+    if (tipo === 'meta') {
+      const token   = document.getElementById('metaToken')?.value?.trim();
+      const phoneId = document.getElementById('metaPhoneId')?.value?.trim();
+      const bizId   = document.getElementById('metaBusinessId')?.value?.trim();
+      if (!token || !phoneId) { toast('Preencha Token e Phone Number ID', 'error'); return; }
+      // Salva no servidor (necessário para o webhook funcionar)
+      await api('PUT', '/api/config/whatsapp-meta', { token, phoneId, bizId, mensagem, ativo });
+      // Salva também no localStorage para uso local
+      localStorage.setItem('alliance_wpp_api', JSON.stringify({ token, phoneId, bizId }));
+      toast('✅ Configuração Meta salva!', 'success');
+      if (st) st.textContent = 'Salvo ✅';
+      // Sincronizar histórico automaticamente
+      sincronizarHistoricoMeta(token, phoneId, bizId);
+    } else {
+      const evolUrl      = document.getElementById('wppAutoUrl')?.value?.trim();
+      const evolKey      = document.getElementById('wppAutoKey')?.value?.trim();
+      const evolInstance = document.getElementById('wppAutoInst')?.value?.trim();
+      if (!evolUrl || !evolKey || !evolInstance) { toast('Preencha URL, API Key e Instância', 'error'); return; }
+      await api('PUT', '/api/config/whatsapp-auto', { evolUrl, evolKey, evolInstance, mensagem, ativo });
+      toast('Automação salva com sucesso!', 'success');
+      if (st) st.textContent = 'Salvo ✅';
+    }
   } catch(e) {
     toast('Erro ao salvar: ' + e.message, 'error');
     if (st) st.textContent = 'Erro ❌';
   }
+}
+
+// Busca histórico de conversas da Meta e salva no banco local
+async function sincronizarHistoricoMeta(token, phoneId, bizId) {
+  try {
+    toast('🔄 Buscando histórico de conversas...', 'info');
+    await api('POST', '/api/whatsapp/sincronizar-historico', { token, phoneId, bizId });
+    await carregarConversasMeta();
+    toast('✅ Histórico sincronizado!', 'success');
+  } catch(e) { console.warn('Histórico Meta:', e.message); }
 }
 
 async function testarWppAuto() {
@@ -5193,6 +5227,15 @@ function toggleWppAutoAtivo(checked) {
 }
 
 function loadWppApiConfig() {
+  // Primeiro tenta carregar do backend (fonte de verdade)
+  api('GET', '/api/config/whatsapp-meta').then(cfg => {
+    if (cfg && cfg.token) {
+      localStorage.setItem('alliance_wpp_api', JSON.stringify({ token: cfg.token, phoneId: cfg.phoneId, bizId: cfg.bizId }));
+      const t = document.getElementById('metaToken');      if(t) t.value = cfg.token;
+      const p = document.getElementById('metaPhoneId');    if(p) p.value = cfg.phoneId||'';
+      const b = document.getElementById('metaBusinessId'); if(b) b.value = cfg.bizId||'';
+    }
+  }).catch(()=>{});
   const cfg = JSON.parse(localStorage.getItem('alliance_wpp_api') || '{}');
   const t = document.getElementById('wppApiToken'); if(t && cfg.token)   t.value = cfg.token;
   const p = document.getElementById('wppPhoneId');  if(p && cfg.phoneId) p.value = cfg.phoneId;

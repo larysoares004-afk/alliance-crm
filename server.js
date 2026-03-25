@@ -619,6 +619,44 @@ app.get('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, 
   try { res.json(JSON.parse(row.valor)); } catch { res.json({}); }
 });
 
+// Sincronizar histórico de conversas da Meta API
+app.post('/api/whatsapp/sincronizar-historico', auth, requireRole('admin','gestor'), async (req, res) => {
+  try {
+    // Pega config do body ou do banco
+    let { token, phoneId, bizId } = req.body;
+    if (!token || !phoneId) {
+      const cfg = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+      if (cfg) { const c = JSON.parse(cfg.valor); token = c.token; phoneId = c.phoneId; bizId = c.bizId; }
+    }
+    if (!token || !phoneId) return res.status(400).json({ erro: 'Token ou Phone ID não configurado' });
+
+    // Buscar conversas da Meta API
+    const url = `https://graph.facebook.com/v20.0/${phoneId}/conversations?fields=id,messages.limit(50){from,timestamp,type,text}&limit=20`;
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    const data = await r.json();
+
+    if (data.error) return res.status(400).json({ erro: data.error.message });
+
+    let count = 0;
+    const convs = data.data || [];
+    for (const conv of convs) {
+      const msgs = conv.messages?.data || [];
+      for (const msg of msgs) {
+        const de    = msg.from?.phone || msg.from?.id || 'desconhecido';
+        const nome  = msg.from?.name || de;
+        const texto = msg.text?.body || (msg.type !== 'text' ? `[${msg.type}]` : '');
+        const wamid = msg.id;
+        const ts    = new Date(msg.timestamp * 1000).toISOString().replace('T',' ').slice(0,19);
+        try {
+          db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid,de,nome,texto,tipo,direcao,criado_em) VALUES (?,?,?,?,'text','recebida',?)`).run(wamid, de, nome, texto, ts);
+          count++;
+        } catch(e) {}
+      }
+    }
+    res.json({ ok: true, mensagens: count });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // HEALTH CHECK
 // ════════════════════════════════════════════════════════════════════════════════
