@@ -5190,12 +5190,36 @@ async function salvarWppAuto() {
 
 // Busca histórico de conversas da Meta e salva no banco local
 async function sincronizarHistoricoMeta(token, phoneId, bizId) {
+  // Se não recebeu args, tenta pegar dos campos do formulário ou localStorage
+  if (!token) {
+    const el = document.getElementById('metaToken');
+    token = el?.value?.trim() || JSON.parse(localStorage.getItem('alliance_wpp_api')||'{}').token;
+  }
+  if (!phoneId) {
+    const el = document.getElementById('metaPhoneId');
+    phoneId = el?.value?.trim() || JSON.parse(localStorage.getItem('alliance_wpp_api')||'{}').phoneId;
+  }
+  if (!bizId) {
+    const el = document.getElementById('metaBusinessId');
+    bizId = el?.value?.trim() || JSON.parse(localStorage.getItem('alliance_wpp_api')||'{}').bizId;
+  }
+  if (!token || !phoneId) {
+    toast('⚠️ Configure o Token e Phone Number ID na aba WhatsApp primeiro', 'error');
+    return;
+  }
+  toast('🔄 Buscando histórico de conversas...', 'info');
   try {
-    toast('🔄 Buscando histórico de conversas...', 'info');
-    await api('POST', '/api/whatsapp/sincronizar-historico', { token, phoneId, bizId });
+    const result = await api('POST', '/api/whatsapp/sincronizar-historico', { token, phoneId, bizId });
     await carregarConversasMeta();
-    toast('✅ Histórico sincronizado!', 'success');
-  } catch(e) { console.warn('Histórico Meta:', e.message); }
+    if (result.mensagens > 0) {
+      toast(`✅ ${result.mensagens} mensagens sincronizadas!`, 'success');
+    } else {
+      toast('ℹ️ Nenhuma mensagem encontrada. Envie uma mensagem para o número e ela aparecerá aqui.', 'info');
+    }
+  } catch(e) {
+    toast('❌ Erro ao sincronizar: ' + (e.message || 'Verifique o token'), 'error');
+    console.error('Histórico Meta:', e);
+  }
 }
 
 async function testarWppAuto() {
