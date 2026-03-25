@@ -1934,6 +1934,12 @@ function iniciarSistema(){
       sincronizarDados().catch(function(){});
     });
   }, 30000);
+
+  // Polling de mensagens WhatsApp Meta a cada 15 segundos
+  setInterval(function(){
+    if(!_getAuthToken()) return;
+    carregarConversasMeta().catch(function(){});
+  }, 15000);
 }
 
 // Stub para compatibilidade (não é mais necessário)

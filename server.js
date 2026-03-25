@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express    = require('express');
-const webpush    = require('web-push');
+let webpush; try { webpush = require('web-push'); } catch(e) { webpush = null; }
 const { Database: _WasmDB } = require('node-sqlite3-wasm');
 // Shim: aceita args variádicos como better-sqlite3
 function Database(path) {
@@ -32,7 +32,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'alliance_crm_secret_2024_troque_is
 // ── Web Push (VAPID) ──────────────────────────────────────────────────────────
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || 'BP_rJ02L19z2zzg7SmsoQa0gLh8WnH1N1KZapjBxa17mtOGh88jQ5NAJ0k4m20KpCs5ouVuxj-0OMMEihwp63No';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'wV8WTNS7bXjDjnwEf9nDl0-unfXlFoAbW0KTk8opCQU';
-webpush.setVapidDetails('mailto:admin@gruporm.com', VAPID_PUBLIC, VAPID_PRIVATE);
+if (webpush) webpush.setVapidDetails('mailto:admin@gruporm.com', VAPID_PUBLIC, VAPID_PRIVATE);
 const DB_PATH    = process.env.DB_PATH || (process.platform === 'win32' ? path.join(__dirname, 'alliance.db') : '/data/alliance.db');
 
 // ── Garantir diretório do banco ───────────────────────────────────────────────
@@ -730,6 +730,7 @@ function pushParaRoles(roles, titulo, corpo, url) {
   const subs = db.prepare('SELECT ps.* FROM push_subscriptions ps JOIN usuarios u ON u.id=ps.user_id WHERE u.role IN (' + roles.map(()=>'?').join(',') + ')').all(roles);
   subs.forEach(sub => {
     const payload = JSON.stringify({ title: titulo, body: corpo, url: url || '/' });
+    if (!webpush) return;
     webpush.sendNotification({ endpoint: sub.endpoint, keys: { auth: sub.keys_auth, p256dh: sub.keys_p256dh } }, payload)
       .catch(e => {
         if (e.statusCode === 410 || e.statusCode === 404) {
