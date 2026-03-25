@@ -130,6 +130,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS config (
   valor TEXT
 )`);
 
+// Tabela de mensagens WhatsApp (Meta Cloud API)
+db.exec(`CREATE TABLE IF NOT EXISTS wpp_mensagens (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wamid       TEXT UNIQUE,
+  de          TEXT NOT NULL,
+  nome        TEXT,
+  para        TEXT,
+  texto       TEXT,
+  tipo        TEXT DEFAULT 'text',
+  direcao     TEXT DEFAULT 'recebida',
+  lido        INTEGER DEFAULT 0,
+  criado_em   TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
 // ── Migrações de schema ───────────────────────────────────────────────────────
 try { db.exec("ALTER TABLE leads ADD COLUMN unidade TEXT DEFAULT 'Conquista'"); } catch(e) { /* já existe */ }
 
@@ -481,6 +495,127 @@ app.get('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, 
 app.put('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, res) => {
   db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('whatsapp_auto', JSON.stringify(req.body));
   res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// WHATSAPP META CLOUD API — WEBHOOK
+// ════════════════════════════════════════════════════════════════════════════════
+
+const WPP_VERIFY_TOKEN = process.env.WPP_VERIFY_TOKEN || 'alliance_wpp_2024';
+
+// Verificação do webhook pela Meta (GET)
+app.get('/api/whatsapp/webhook', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token === WPP_VERIFY_TOKEN) {
+    console.log('✅ Webhook WhatsApp verificado pela Meta');
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+});
+
+// Receber mensagens da Meta (POST)
+app.post('/api/whatsapp/webhook', (req, res) => {
+  try {
+    const body = req.body;
+    if (body.object !== 'whatsapp_business_account') return res.sendStatus(200);
+    const entry = body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    if (!value?.messages) return res.sendStatus(200);
+
+    value.messages.forEach(msg => {
+      const de    = msg.from;
+      const wamid = msg.id;
+      const tipo  = msg.type || 'text';
+      const texto = tipo === 'text' ? msg.text?.body :
+                    tipo === 'image' ? '[Imagem]' :
+                    tipo === 'audio' ? '[Áudio]' :
+                    tipo === 'document' ? '[Documento]' :
+                    tipo === 'video' ? '[Vídeo]' : '[Mensagem]';
+
+      // Pega nome do contato se disponível
+      const contatos = value.contacts || [];
+      const contato  = contatos.find(c => c.wa_id === de);
+      const nome     = contato?.profile?.name || de;
+
+      try {
+        db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao)
+                    VALUES (?,?,?,?,?,'recebida')`).run(wamid, de, nome, texto, tipo);
+      } catch(e) { console.error('Erro ao salvar msg wpp:', e.message); }
+    });
+  } catch(e) { console.error('Erro webhook wpp:', e.message); }
+  res.sendStatus(200);
+});
+
+// Buscar conversas (lista de contatos)
+app.get('/api/whatsapp/conversas', auth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT de, nome,
+           MAX(criado_em) as ultima,
+           COUNT(*) as total,
+           SUM(CASE WHEN lido=0 AND direcao='recebida' THEN 1 ELSE 0 END) as nao_lidas,
+           (SELECT texto FROM wpp_mensagens m2 WHERE m2.de=m.de ORDER BY m2.criado_em DESC LIMIT 1) as ultima_msg
+    FROM wpp_mensagens m
+    GROUP BY de
+    ORDER BY ultima DESC
+  `).all();
+  res.json(rows);
+});
+
+// Buscar mensagens de um contato
+app.get('/api/whatsapp/mensagens/:de', auth, (req, res) => {
+  const msgs = db.prepare(`
+    SELECT * FROM wpp_mensagens WHERE de=? ORDER BY criado_em ASC
+  `).all(req.params.de);
+  // Marcar como lido
+  db.prepare(`UPDATE wpp_mensagens SET lido=1 WHERE de=? AND direcao='recebida'`).run(req.params.de);
+  res.json(msgs);
+});
+
+// Enviar mensagem via Meta Cloud API
+app.post('/api/whatsapp/enviar', auth, async (req, res) => {
+  const { para, texto } = req.body;
+  const cfg = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+  if (!cfg) return res.status(400).json({ erro: 'API Meta não configurada' });
+  const { token, phoneId } = JSON.parse(cfg.valor);
+  if (!token || !phoneId) return res.status(400).json({ erro: 'Token ou Phone ID faltando' });
+
+  try {
+    const r = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: para.replace(/\D/g, ''),
+        type: 'text',
+        text: { body: texto }
+      })
+    });
+    const data = await r.json();
+    if (data.messages?.[0]?.id) {
+      db.prepare(`INSERT INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao)
+                  VALUES (?,?,?,?,'text','enviada')`).run(
+        data.messages[0].id, para.replace(/\D/g, ''), 'Você', texto
+      );
+      res.json({ ok: true });
+    } else {
+      res.status(400).json({ erro: data.error?.message || 'Erro ao enviar' });
+    }
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Salvar config da Meta API
+app.put('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, res) => {
+  db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('whatsapp_meta', JSON.stringify(req.body));
+  res.json({ ok: true });
+});
+
+app.get('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, res) => {
+  const row = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+  if (!row) return res.json({});
+  try { res.json(JSON.parse(row.valor)); } catch { res.json({}); }
 });
 
 // ════════════════════════════════════════════════════════════════════════════════

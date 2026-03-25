@@ -1031,7 +1031,7 @@ select.inp{cursor:pointer}
     <div class="card-hdr">
       <div>
         <div class="card-title">🤖 Mensagem Automática para Leads da Landing Page</div>
-        <div class="card-sub">Quando um lead chega pela LP, envia mensagem automática via Evolution API</div>
+        <div class="card-sub">Quando um lead chega, envia mensagem automática pelo WhatsApp</div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="wppAutoAtivo" onchange="toggleWppAutoAtivo(this.checked)"
@@ -1039,7 +1039,43 @@ select.inp{cursor:pointer}
         <span style="font-size:12px;font-weight:700" id="wppAutoAtivoLabel">Desativado</span>
       </label>
     </div>
-    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+
+    <!-- Seletor de tipo de API -->
+    <div style="padding:16px 20px 0">
+      <label class="lbl">Tipo de integração</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button id="btnTipoMeta" onclick="setWppTipo('meta')"
+          style="flex:1;padding:10px;border-radius:10px;border:2px solid #1877F2;background:#EBF3FF;color:#1877F2;font-weight:700;font-size:13px;cursor:pointer">
+          ✅ WhatsApp Cloud API<br><span style="font-size:10px;font-weight:400">Meta Oficial (recomendado)</span>
+        </button>
+        <button id="btnTipoEvol" onclick="setWppTipo('evolution')"
+          style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--z200);background:none;color:var(--z500);font-weight:700;font-size:13px;cursor:pointer">
+          Evolution API<br><span style="font-size:10px;font-weight:400">Alternativa gratuita</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Campos Meta Oficial -->
+    <div id="camposMeta" style="padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="grid-column:1/-1">
+        <label class="lbl">Token de Acesso</label>
+        <input type="password" id="metaToken" class="inp" placeholder="EAAx..." style="font-family:monospace;font-size:12px">
+        <div style="font-size:10px;color:var(--z400);margin-top:3px">Token permanente do Usuário do Sistema — começa com EAAx...</div>
+      </div>
+      <div>
+        <label class="lbl">Phone Number ID</label>
+        <input type="text" id="metaPhoneId" class="inp" placeholder="123456789012345" style="font-family:monospace;font-size:12px">
+        <div style="font-size:10px;color:var(--z400);margin-top:3px">ID do número no painel Meta</div>
+      </div>
+      <div>
+        <label class="lbl">Business Account ID (WABA)</label>
+        <input type="text" id="metaBusinessId" class="inp" placeholder="123456789012345" style="font-family:monospace;font-size:12px">
+        <div style="font-size:10px;color:var(--z400);margin-top:3px">ID da Conta do WhatsApp Business</div>
+      </div>
+    </div>
+
+    <!-- Campos Evolution (ocultos por padrão) -->
+    <div id="camposEvolution" style="padding:16px 20px;display:none;grid-template-columns:1fr 1fr 1fr;gap:14px">
       <div>
         <label class="lbl">URL do Evolution API</label>
         <input type="text" id="wppAutoUrl" class="inp" placeholder="https://api.evolution.io" style="font-family:monospace;font-size:12px">
@@ -1053,13 +1089,14 @@ select.inp{cursor:pointer}
         <input type="text" id="wppAutoInst" class="inp" placeholder="minha-instancia" style="font-family:monospace;font-size:12px">
       </div>
     </div>
+
     <div style="padding:0 20px 14px">
       <label class="lbl">Mensagem (use {nome} e {unidade})</label>
       <textarea id="wppAutoMsg" class="inp" rows="4" placeholder="Olá {nome}! Recebemos seu agendamento de Exame de Vista na Grupo RM Clínica - {unidade}. Em breve nossa equipe entrará em contato! 😊"
         style="resize:vertical;font-size:12px;line-height:1.5"></textarea>
     </div>
-    <div style="padding:0 20px 20px;display:flex;gap:10px">
-      <button class="btn btn-primary" onclick="salvarWppAuto()">💾 Salvar Automação</button>
+    <div style="padding:0 20px 20px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="salvarWppAuto()">💾 Salvar</button>
       <button class="btn btn-ghost" onclick="testarWppAuto()">🧪 Testar Envio</button>
       <span id="wppAutoStatus" style="align-self:center;font-size:11px;color:var(--z400)"></span>
     </div>
@@ -2218,7 +2255,7 @@ function _goToSemHistorico(tab) {
   if(tab==='servicos')     renderServicos();
   if(tab==='chat')         renderChatInterno();
   if(tab==='whatsapp')     { renderWpp(); setTimeout(loadWppApiConfig,100); }
-  if(tab==='atendimentos') renderAttList();
+  if(tab==='atendimentos') { renderAttList(); carregarConversasMeta(); }
   if(tab==='config')       renderConfig();
   if(tab==='novo')         initNovo();
 }
@@ -3454,6 +3491,43 @@ async function fetchEvolMessages(w){
 
 // ══════════════════════════ ATENDIMENTOS ══════════════════════════════════════
 // Chats por conta WhatsApp conectada
+// Carrega conversas da Meta Cloud API do backend
+async function carregarConversasMeta() {
+  try {
+    const dados = await api('GET', '/api/whatsapp/conversas');
+    S(s => s.metaConversas = dados || []);
+    if (uiState.currentTab === 'atendimentos') renderAttList();
+  } catch(e) {}
+}
+
+// Abre conversa da Meta e carrega mensagens do backend
+async function openChatMeta(de, nome) {
+  uiState.activeChat = 'meta-' + de;
+  uiState.metaChatDe = de;
+  renderAttList();
+  try {
+    const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
+    S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+    renderMsgsMeta(de, nome);
+  } catch(e) { console.error(e); }
+}
+
+function renderMsgsMeta(de, nome) {
+  const msgs = (state.metaMensagens || {})[de] || [];
+  const box = document.getElementById('msgBox');
+  if (!box) return;
+  box.innerHTML = msgs.map(m => {
+    const enviada = m.direcao === 'enviada';
+    return `<div class="msg ${enviada ? 'out' : 'in'}" style="margin:6px 12px;display:flex;flex-direction:column;align-items:${enviada?'flex-end':'flex-start'}">
+      <div style="max-width:80%;background:${enviada?'#dcf8c6':'#fff'};border-radius:12px;padding:8px 12px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+        ${escHtml(m.texto||'')}
+        <div style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right">${(m.criado_em||'').slice(11,16)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
 function getAttChats(canal) {
   canal = canal || uiState.attCanal || 'whatsapp';
   const chats = [];
@@ -3480,7 +3554,21 @@ function getAttChats(canal) {
     return chats;
   }
 
-  // WhatsApp
+  // WhatsApp — Meta Cloud API
+  (state.metaConversas || []).forEach(c => {
+    const chatId = 'meta-' + c.de;
+    if (seen.has(chatId)) return;
+    seen.add(chatId);
+    chats.push({
+      id: chatId, name: c.nome || c.de, phone: c.de,
+      msg: c.ultima_msg || '', time: (c.ultima||'').slice(11,16),
+      unread: c.nao_lidas || 0, canal: 'whatsapp',
+      accountName: 'Meta Oficial', isMeta: true,
+      status: 'active',
+    });
+  });
+
+  // WhatsApp — Evolution API
   const connAccounts = state.wppAccounts.filter(w => w.status === 'connected');
   Object.entries(state.chatMsgs || {}).forEach(([chatId, msgs]) => {
     if (!chatId.startsWith('evol-') || !msgs || !msgs.length) return;
@@ -3560,7 +3648,9 @@ function renderAttList(){
   const filtered=allChats.filter(c=>!q||c.name.toLowerCase().includes(q)||(c.phone||'').includes(q));
   const STATUS_CHAT={active:{bg:'#d1fae5',col:'#065f46',lbl:'Em Atendimento'},waiting:{bg:'#fef3c7',col:'#92400e',lbl:'Aguardando'},resolved:{bg:'var(--z100)',col:'var(--z600)',lbl:'Resolvido'}};
 
-  if(state.wppAccounts.filter(w=>w.status==='connected').length===0){
+  const temMeta = (state.metaConversas||[]).length > 0;
+  const temEvol = state.wppAccounts.filter(w=>w.status==='connected').length > 0;
+  if(!temMeta && !temEvol && canal==='whatsapp'){
     document.getElementById('attList').innerHTML=`<div style="text-align:center;padding:24px 12px;color:var(--z400)">
       <div style="font-size:28px;margin-bottom:8px">📱</div>
       <p style="font-size:12px;font-weight:600;margin-bottom:8px">Nenhuma conta WhatsApp conectada</p>
@@ -3570,9 +3660,9 @@ function renderAttList(){
   }
 
   document.getElementById('attList').innerHTML=filtered.length===0
-    ?`<div style="text-align:center;padding:24px;color:var(--z400);font-size:12px">Nenhum resultado</div>`
+    ?`<div style="text-align:center;padding:24px;color:var(--z400);font-size:12px">Nenhuma mensagem ainda</div>`
     :filtered.map(c=>`
-    <div class="att-item${uiState.activeChat===c.id?' on':''}" onclick="openChat('${c.id}','${c.name}','${c.phone}','${c.accountName}')">
+    <div class="att-item${uiState.activeChat===c.id?' on':''}" onclick="${c.isMeta?`openChatMeta('${c.phone}','${c.name}')`:`openChat('${c.id}','${c.name}','${c.phone}','${c.accountName}')`}">
       <div class="att-av">${c.name.charAt(0)}</div>
       <div class="att-info">
         <div style="display:flex;justify-content:space-between">
@@ -3643,6 +3733,23 @@ function sendMsg(){
   const inp=document.getElementById('msgInput');
   if(!inp||!inp.value.trim()||!uiState.activeChat)return;
   const txt = inp.value.trim();
+  inp.value='';
+
+  // Conversa Meta Cloud API
+  if (uiState.activeChat.startsWith('meta-') && uiState.metaChatDe) {
+    const de = uiState.metaChatDe;
+    S(s => {
+      s.metaMensagens = s.metaMensagens || {};
+      s.metaMensagens[de] = s.metaMensagens[de] || [];
+      s.metaMensagens[de].push({ texto: txt, direcao: 'enviada', criado_em: new Date().toISOString() });
+    });
+    renderMsgsMeta(de, '');
+    api('POST', '/api/whatsapp/enviar', { para: de, texto: txt })
+      .then(() => carregarConversasMeta())
+      .catch(e => toast('Erro ao enviar: ' + e.message, 'error'));
+    return;
+  }
+
   S(s=>{
     if(!s.chatMsgs[uiState.activeChat])s.chatMsgs[uiState.activeChat]=[];
     s.chatMsgs[uiState.activeChat].push({
@@ -3650,7 +3757,6 @@ function sendMsg(){
       time:new Date().toISOString(), tipo:'out', out:true, lido:true,
     });
   });
-  inp.value='';
   renderMsgs();
   // Enviar via canal correto
   const allC = [...getAttChats('whatsapp'), ...getAttChats('instagram')];
