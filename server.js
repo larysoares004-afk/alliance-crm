@@ -26,6 +26,7 @@ const path       = require('path');
 const fs         = require('fs');
 
 const app  = express();
+app.set('trust proxy', 1); // Railway usa proxy — necessário para rate-limit e IPs corretos
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'alliance_crm_secret_2024_troque_isto';
 
