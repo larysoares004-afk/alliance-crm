@@ -1001,28 +1001,51 @@ select.inp{cursor:pointer}
   <div class="card" style="margin-top:20px">
     <div class="card-hdr">
       <div>
-        <div class="card-title">🔗 API Oficial WhatsApp Business (Meta)</div>
-        <div class="card-sub">Integração oficial — sem risco de ban, 1.000 conversas grátis/mês</div>
+        <div class="card-title">📱 Contas WhatsApp Business (Meta Oficial)</div>
+        <div class="card-sub">Adicione quantas contas quiser — todas aparecem na aba Atendimentos</div>
       </div>
-      <span style="background:#ecfdf5;color:#059669;padding:4px 12px;border-radius:99px;font-size:11px;font-weight:700">✓ Recomendado</span>
+      <button class="btn btn-primary" style="font-size:12px" onclick="abrirModalNovaContaMeta()">+ Adicionar Conta</button>
     </div>
-    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
-      <div>
-        <label class="lbl">Token de Acesso (EAAx...)</label>
-        <input type="password" id="wppApiToken" class="inp" placeholder="EAAxxxxxxxx..." style="font-family:monospace;font-size:12px">
-      </div>
-      <div>
-        <label class="lbl">Phone Number ID</label>
-        <input type="text" id="wppPhoneId" class="inp" placeholder="123456789012345" style="font-family:monospace;font-size:12px">
-      </div>
-      <div>
-        <label class="lbl">Business Account ID</label>
-        <input type="text" id="wppBizId" class="inp" placeholder="987654321098765" style="font-family:monospace;font-size:12px">
-      </div>
+    <div id="listaContasMeta" style="padding:0 20px 20px">
+      <div style="text-align:center;padding:20px;color:var(--z400);font-size:12px">Carregando contas...</div>
     </div>
-    <div style="padding:0 20px 20px;display:flex;gap:10px">
-      <button class="btn btn-primary" onclick="salvarWppApi()">💾 Salvar Configuração</button>
-      <button class="btn btn-ghost" onclick="testarWppApi()">🧪 Testar Conexão</button>
+  </div>
+
+  <!-- Modal nova conta Meta -->
+  <div id="modalNovaContaMeta" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:16px;padding:24px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="display:flex;justify-content:space-between;margin-bottom:20px">
+        <div style="font-size:16px;font-weight:800">📱 Nova Conta WhatsApp</div>
+        <button onclick="fecharModalNovaContaMeta()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--z400)">×</button>
+      </div>
+      <input type="hidden" id="novaContaId">
+      <div style="display:grid;gap:14px">
+        <div>
+          <label class="lbl">Nome da conta</label>
+          <input type="text" id="novaContaNome" class="inp" placeholder="Ex: Alliance Optometria BA">
+        </div>
+        <div>
+          <label class="lbl">Token de Acesso (EAAx...)</label>
+          <input type="password" id="novaContaToken" class="inp" placeholder="EAAxxxxxxxx..." style="font-family:monospace;font-size:12px">
+          <div style="font-size:10px;color:var(--z400);margin-top:3px">Token permanente do Usuário do Sistema</div>
+        </div>
+        <div>
+          <label class="lbl">Phone Number ID</label>
+          <input type="text" id="novaContaPhoneId" class="inp" placeholder="123456789012345" style="font-family:monospace;font-size:12px">
+        </div>
+        <div>
+          <label class="lbl">Business Account ID</label>
+          <input type="text" id="novaContaBizId" class="inp" placeholder="987654321098765" style="font-family:monospace;font-size:12px">
+        </div>
+        <div>
+          <label class="lbl">Número (opcional, para exibição)</label>
+          <input type="text" id="novaContaNumero" class="inp" placeholder="+55 77 99999-9999">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn btn-primary" style="flex:1" onclick="salvarNovaContaMeta()">💾 Salvar Conta</button>
+        <button class="btn btn-ghost" onclick="fecharModalNovaContaMeta()">Cancelar</button>
+      </div>
     </div>
   </div>
 
@@ -2268,7 +2291,7 @@ function _goToSemHistorico(tab) {
   if(tab==='setores')      renderSetores();
   if(tab==='servicos')     renderServicos();
   if(tab==='chat')         renderChatInterno();
-  if(tab==='whatsapp')     { renderWpp(); setTimeout(loadWppApiConfig,100); }
+  if(tab==='whatsapp')     { renderWpp(); setTimeout(()=>{ loadWppApiConfig(); carregarContasMeta(); },100); }
   if(tab==='atendimentos') { renderAttList(); carregarConversasMeta(); }
   if(tab==='config')       renderConfig();
   if(tab==='novo')         initNovo();
@@ -5141,13 +5164,90 @@ async function confirmarTransferencia() {
 // ══════════════════════════════════════════════════════════════════════════════
 // API OFICIAL WHATSAPP (META)
 // ══════════════════════════════════════════════════════════════════════════════
-function salvarWppApi() {
-  const token  = document.getElementById('wppApiToken')?.value?.trim();
-  const phoneId= document.getElementById('wppPhoneId')?.value?.trim();
-  const bizId  = document.getElementById('wppBizId')?.value?.trim();
+// ── Gerenciamento de múltiplas contas Meta ──────────────────────────────────
+async function carregarContasMeta() {
+  try {
+    const contas = await api('GET', '/api/whatsapp/contas');
+    const el = document.getElementById('listaContasMeta');
+    if (!el) return;
+    if (!contas || contas.length === 0) {
+      el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--z400);font-size:12px">
+        Nenhuma conta configurada ainda.<br>Clique em "+ Adicionar Conta" para começar.
+      </div>`;
+      return;
+    }
+    el.innerHTML = contas.map(c => `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--z100)">
+        <div style="width:40px;height:40px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;font-size:20px">📱</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700">${escHtml(c.nome||c.phone_id)}</div>
+          <div style="font-size:11px;color:var(--z400)">Phone ID: ${c.phone_id}${c.numero?' · '+escHtml(c.numero):''}</div>
+        </div>
+        <span style="background:#dcfce7;color:#16a34a;padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700">✅ Ativo</span>
+        <button onclick="editarContaMeta('${c.id}')" style="background:none;border:1px solid var(--z200);border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer">✏️ Editar</button>
+        <button onclick="removerContaMeta('${c.id}')" style="background:none;border:1px solid #fecdd3;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;color:#e11d48">🗑</button>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+function abrirModalNovaContaMeta() {
+  document.getElementById('novaContaId').value = '';
+  document.getElementById('novaContaNome').value = '';
+  document.getElementById('novaContaToken').value = '';
+  document.getElementById('novaContaPhoneId').value = '';
+  document.getElementById('novaContaBizId').value = '';
+  document.getElementById('novaContaNumero').value = '';
+  document.getElementById('modalNovaContaMeta').style.display = 'flex';
+}
+
+function fecharModalNovaContaMeta() {
+  document.getElementById('modalNovaContaMeta').style.display = 'none';
+}
+
+async function salvarNovaContaMeta() {
+  const id      = document.getElementById('novaContaId').value.trim();
+  const nome    = document.getElementById('novaContaNome').value.trim();
+  const token   = document.getElementById('novaContaToken').value.trim();
+  const phoneId = document.getElementById('novaContaPhoneId').value.trim();
+  const bizId   = document.getElementById('novaContaBizId').value.trim();
+  const numero  = document.getElementById('novaContaNumero').value.trim();
   if (!token || !phoneId) { toast('Token e Phone Number ID são obrigatórios', 'error'); return; }
-  localStorage.setItem('alliance_wpp_api', JSON.stringify({ token, phoneId, bizId }));
-  toast('✅ Configuração salva!', 'success');
+  try {
+    await api('POST', '/api/whatsapp/contas', { id: id||undefined, nome, token, phone_id: phoneId, biz_id: bizId, numero });
+    toast('✅ Conta salva!', 'success');
+    fecharModalNovaContaMeta();
+    carregarContasMeta();
+    // Atualiza localStorage também
+    localStorage.setItem('alliance_wpp_api', JSON.stringify({ token, phoneId, bizId }));
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+}
+
+async function removerContaMeta(id) {
+  if (!confirm('Remover esta conta?')) return;
+  await api('DELETE', '/api/whatsapp/contas/' + id);
+  toast('Conta removida', 'success');
+  carregarContasMeta();
+}
+
+async function editarContaMeta(id) {
+  try {
+    const contas = await api('GET', '/api/whatsapp/contas');
+    const c = contas.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('novaContaId').value = c.id;
+    document.getElementById('novaContaNome').value = c.nome||'';
+    document.getElementById('novaContaToken').value = '';  // token não é retornado por segurança
+    document.getElementById('novaContaPhoneId').value = c.phone_id||'';
+    document.getElementById('novaContaBizId').value = c.biz_id||'';
+    document.getElementById('novaContaNumero').value = c.numero||'';
+    document.getElementById('modalNovaContaMeta').style.display = 'flex';
+    toast('⚠️ Reinsira o Token para salvar alterações', 'info');
+  } catch(e) {}
+}
+
+function salvarWppApi() {
+  // Mantida para compatibilidade — redireciona para nova UI
+  abrirModalNovaContaMeta();
 }
 
 async function testarWppApi() {

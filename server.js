@@ -131,6 +131,27 @@ db.exec(`CREATE TABLE IF NOT EXISTS config (
   valor TEXT
 )`);
 
+// Tabela de contas WhatsApp Meta (múltiplas contas)
+db.exec(`CREATE TABLE IF NOT EXISTS wpp_contas (
+  id       TEXT PRIMARY KEY,
+  nome     TEXT,
+  token    TEXT,
+  phone_id TEXT,
+  biz_id   TEXT,
+  numero   TEXT,
+  ativo    INTEGER DEFAULT 1,
+  criado_em TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
+// Inserir conta padrão Alliance se não existir
+try {
+  const contaExiste = db.prepare("SELECT id FROM wpp_contas WHERE phone_id='1025821790609502'").get();
+  if (!contaExiste) {
+    db.prepare(`INSERT INTO wpp_contas (id,nome,phone_id,biz_id,numero,ativo) VALUES (?,?,?,?,?,1)`)
+      .run('alliance-principal', 'Alliance Optometria BA', '1025821790609502', '789454576960299', '+55 77 81611475');
+  }
+} catch(e) {}
+
 // Tabela de mensagens WhatsApp (Meta Cloud API)
 db.exec(`CREATE TABLE IF NOT EXISTS wpp_mensagens (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,12 +159,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS wpp_mensagens (
   de          TEXT NOT NULL,
   nome        TEXT,
   para        TEXT,
+  conta_id    TEXT,
   texto       TEXT,
   tipo        TEXT DEFAULT 'text',
   direcao     TEXT DEFAULT 'recebida',
   lido        INTEGER DEFAULT 0,
   criado_em   TEXT DEFAULT (datetime('now','localtime'))
 )`);
+try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN conta_id TEXT"); } catch(e) {}
 
 // ── Migrações de schema ───────────────────────────────────────────────────────
 try { db.exec("ALTER TABLE leads ADD COLUMN unidade TEXT DEFAULT 'Conquista'"); } catch(e) { /* já existe */ }
@@ -499,6 +522,45 @@ app.put('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, 
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// WHATSAPP META — GERENCIAR CONTAS
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Listar contas
+app.get('/api/whatsapp/contas', auth, (req, res) => {
+  const contas = db.prepare('SELECT id,nome,phone_id,biz_id,numero,ativo,criado_em FROM wpp_contas ORDER BY criado_em').all();
+  res.json(contas);
+});
+
+// Adicionar/atualizar conta
+app.post('/api/whatsapp/contas', auth, requireRole('admin','gestor'), (req, res) => {
+  const { id, nome, token, phone_id, biz_id, numero } = req.body;
+  if (!token || !phone_id) return res.status(400).json({ erro: 'Token e Phone ID obrigatórios' });
+  const cid = id || ('conta-' + Date.now());
+  db.prepare(`INSERT OR REPLACE INTO wpp_contas (id,nome,token,phone_id,biz_id,numero,ativo) VALUES (?,?,?,?,?,?,1)`)
+    .run(cid, nome||phone_id, token, phone_id, biz_id||'', numero||'');
+  // Sincronizar config principal também
+  db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('whatsapp_meta', JSON.stringify({ token, phoneId: phone_id, bizId: biz_id }));
+  res.json({ ok: true, id: cid });
+});
+
+// Remover conta
+app.delete('/api/whatsapp/contas/:id', auth, requireRole('admin','gestor'), (req, res) => {
+  db.prepare('DELETE FROM wpp_contas WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Buscar token de uma conta pelo phone_id (usado pelo webhook)
+function getTokenPorPhoneId(phoneId) {
+  const conta = db.prepare('SELECT token FROM wpp_contas WHERE phone_id=? AND ativo=1').get(phoneId);
+  if (conta?.token) return conta.token;
+  // fallback: config global
+  try {
+    const cfg = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+    return cfg ? JSON.parse(cfg.valor).token : null;
+  } catch(e) { return null; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // WHATSAPP META CLOUD API — WEBHOOK
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -584,10 +646,19 @@ app.get('/api/whatsapp/mensagens/:de', auth, (req, res) => {
 
 // Enviar mensagem via Meta Cloud API
 app.post('/api/whatsapp/enviar', auth, async (req, res) => {
-  const { para, texto } = req.body;
-  const cfg = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
-  if (!cfg) return res.status(400).json({ erro: 'API Meta não configurada' });
-  const { token, phoneId } = JSON.parse(cfg.valor);
+  const { para, texto, contaId } = req.body;
+  // Busca a conta correta (por contaId ou a primeira ativa)
+  let conta = contaId
+    ? db.prepare('SELECT * FROM wpp_contas WHERE id=? AND ativo=1').get(contaId)
+    : db.prepare('SELECT * FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
+  // Fallback para config global
+  if (!conta?.token) {
+    const cfg = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+    if (!cfg) return res.status(400).json({ erro: 'Nenhuma conta WhatsApp configurada' });
+    const c = JSON.parse(cfg.valor);
+    conta = { token: c.token, phone_id: c.phoneId };
+  }
+  const { token, phone_id: phoneId } = conta;
   if (!token || !phoneId) return res.status(400).json({ erro: 'Token ou Phone ID faltando' });
 
   try {
