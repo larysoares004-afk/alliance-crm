@@ -5305,9 +5305,18 @@ function loadWppApiConfig() {
   api('GET', '/api/config/whatsapp-meta').then(cfg => {
     if (cfg && cfg.token) {
       localStorage.setItem('alliance_wpp_api', JSON.stringify({ token: cfg.token, phoneId: cfg.phoneId, bizId: cfg.bizId }));
+      // Ativa modo Meta e preenche os campos
+      setWppTipo('meta');
       const t = document.getElementById('metaToken');      if(t) t.value = cfg.token;
       const p = document.getElementById('metaPhoneId');    if(p) p.value = cfg.phoneId||'';
       const b = document.getElementById('metaBusinessId'); if(b) b.value = cfg.bizId||'';
+      // Preenche também a mensagem automática
+      if (cfg.mensagem) { const m = document.getElementById('wppAutoMsg'); if(m) m.value = cfg.mensagem; }
+      if (cfg.ativo !== undefined) {
+        const chk = document.getElementById('wppAutoAtivo'); if(chk) chk.checked = !!cfg.ativo;
+        const lbl = document.getElementById('wppAutoAtivoLabel');
+        if(lbl) { lbl.textContent = cfg.ativo ? 'Ativado ✅' : 'Desativado'; lbl.style.color = cfg.ativo ? 'var(--green)' : 'var(--z400)'; }
+      }
     }
   }).catch(()=>{});
   const cfg = JSON.parse(localStorage.getItem('alliance_wpp_api') || '{}');
