@@ -527,7 +527,7 @@ app.put('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, 
 
 // Listar contas
 app.get('/api/whatsapp/contas', auth, (req, res) => {
-  const contas = db.prepare('SELECT id,nome,phone_id,biz_id,numero,ativo,criado_em FROM wpp_contas ORDER BY criado_em').all();
+  const contas = db.prepare('SELECT id,nome,phone_id,biz_id,numero,ativo,criado_em,(token IS NOT NULL AND token!=\'\') as token_ok FROM wpp_contas ORDER BY criado_em').all();
   res.json(contas);
 });
 
