@@ -200,7 +200,7 @@ select.inp{cursor:pointer}
 /* Atendimentos */
 .att-layout{display:flex;height:calc(100vh - 144px);background:#fff;border-radius:20px;border:1px solid var(--z200);overflow:hidden}
 .att-sidebar{width:300px;border-right:1px solid var(--z200);display:flex;flex-direction:column;background:#fafafa}
-.att-hdr{padding:14px 16px;border-bottom:1px solid var(--z200);background:#fff}
+.att-hdr{padding:14px 16px;border-bottom:1px solid var(--z200);background:#fff;display:flex;align-items:center;gap:8px}
 .att-list{flex:1;overflow-y:auto}
 .att-item{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--z100);cursor:pointer;transition:all .15s}
 .att-item:hover{background:var(--z100)}
@@ -1153,10 +1153,11 @@ select.inp{cursor:pointer}
   <div class="att-layout">
     <div class="att-sidebar">
       <div class="att-hdr">
-        <div class="search-bar" style="width:100%">
+        <div class="search-bar" style="flex:1">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" class="inp" id="attSearch" placeholder="Buscar conversa..." style="width:100%" oninput="renderAttList()">
         </div>
+        <button id="attRefreshBtn" onclick="atualizarAtendimentos()" title="Atualizar conversas" style="background:none;border:none;cursor:pointer;padding:4px 8px;font-size:16px;color:var(--z500);line-height:1">🔄</button>
       </div>
       <div class="att-list" id="attList"></div>
     </div>
@@ -1593,13 +1594,11 @@ async function api(method, path, body) {
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
-    const _s = JSON.parse(sessionStorage.getItem('alliance_sess') || 'null');
-    if (_s && _s.token) {
-      sessionStorage.removeItem('alliance_sess');
-      location.reload();
-      return;
-    }
-    throw new Error(data.error || 'Não autenticado');
+    // Sessão expirada — limpar tokens e mostrar tela de login
+    _limparToken();
+    const ls = document.getElementById('loginScreen');
+    if (ls) ls.style.display = 'flex';
+    return;
   }
   if (!res.ok) throw new Error(data.error || 'Erro ' + res.status);
   return data;
@@ -2025,6 +2024,10 @@ const DEFAULT_STATE = {
   ],
   notifications: [],
   chatMsgs: {},
+  metaConversas: [],
+  instagramConversas: [],
+  metaMensagens: {},
+  instagramMensagens: {},
 };
 
 function loadState() {
@@ -2057,6 +2060,10 @@ function saveState() {
       wppAccounts: state.wppAccounts,
       notifications: state.notifications,
       chatMsgs: state.chatMsgs,
+      metaConversas: state.metaConversas,
+      instagramConversas: state.instagramConversas,
+      metaMensagens: state.metaMensagens,
+      instagramMensagens: state.instagramMensagens,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch(e) {}
@@ -2291,10 +2298,10 @@ function _goToSemHistorico(tab) {
   if(tab==='setores')      renderSetores();
   if(tab==='servicos')     renderServicos();
   if(tab==='chat')         renderChatInterno();
-  if(tab==='whatsapp')     { renderWpp(); setTimeout(()=>{ loadWppApiConfig(); carregarContasMeta(); },100); }
-  if(tab==='atendimentos') { renderAttList(); carregarConversasMeta(); }
-  if(tab==='config')       renderConfig();
-  if(tab==='novo')         initNovo();
+  if(tab==='whatsapp')     { _pararPollAtendimentos(); renderWpp(); setTimeout(()=>{ loadWppApiConfig(); carregarContasMeta(); },100); }
+  if(tab==='atendimentos') { renderAttList(); _iniciarPollAtendimentos(); }
+  if(tab==='config')       { _pararPollAtendimentos(); renderConfig(); }
+  if(tab==='novo')         { _pararPollAtendimentos(); initNovo(); }
 }
 
 function goTo(tab) {
@@ -2333,10 +2340,10 @@ function goTo(tab) {
   if (tab==='setores')      renderSetores();
   if (tab==='servicos')     renderServicos();
   if (tab==='chat')         renderChatInterno();
-  if (tab==='whatsapp')     { renderWpp(); setTimeout(loadWppApiConfig, 100); }
-  if (tab==='atendimentos') renderAttList();
-  if (tab==='config')       renderConfig();
-  if (tab==='novo')         initNovo();
+  if (tab==='whatsapp')     { _pararPollAtendimentos(); renderWpp(); setTimeout(loadWppApiConfig, 100); }
+  if (tab==='atendimentos') { renderAttList(); _iniciarPollAtendimentos(); }
+  if (tab==='config')       { _pararPollAtendimentos(); renderConfig(); }
+  if (tab==='novo')         { _pararPollAtendimentos(); initNovo(); }
   // Scroll para o topo
   document.querySelector('.cnt')?.scrollTo(0, 0);
   // Atualizar visibilidade do botão Voltar
@@ -3526,6 +3533,15 @@ async function fetchEvolMessages(w){
   } catch{}
 }
 
+// Escape HTML special characters
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;',
+    '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
 // ══════════════════════════ ATENDIMENTOS ══════════════════════════════════════
 // Chats por conta WhatsApp conectada
 // Carrega conversas da Meta Cloud API do backend
@@ -3534,7 +3550,114 @@ async function carregarConversasMeta() {
     const dados = await api('GET', '/api/whatsapp/conversas');
     S(s => s.metaConversas = dados || []);
     if (uiState.currentTab === 'atendimentos') renderAttList();
-  } catch(e) {}
+    // Carregar e mostrar transferências
+    carregarTransferenciasRecebidas();
+  } catch(e) {
+    console.error('Erro ao carregar conversas Meta:', e);
+  }
+}
+
+// Carregar conversas Instagram
+async function carregarConversasInstagram() {
+  try {
+    const dados = await api('GET', '/api/instagram/conversas');
+    S(s => s.instagramConversas = dados || []);
+    if (uiState.currentTab === 'atendimentos') renderAttList();
+  } catch(e) {
+    // Silencioso — Instagram pode não estar configurado
+  }
+}
+
+// Carregar transferências direcionadas ao usuário logado
+async function carregarTransferenciasRecebidas() {
+  if (!currentUser) return;
+  try {
+    const allTransfers = await api('GET', '/api/whatsapp/conversas');
+    if (!Array.isArray(allTransfers)) return;
+
+    // Buscar transferências recentes (últimos 5 minutos)
+    const agora = new Date();
+    const cincoMinAtrás = new Date(agora.getTime() - 5 * 60 * 1000);
+
+    const transferenciasNotificadas = JSON.parse(sessionStorage.getItem('_transfersNotificadas') || '[]');
+
+    for (const conversa of allTransfers) {
+      try {
+        const transfers = await api('GET', '/api/whatsapp/transferencias/' + conversa.de);
+        if (Array.isArray(transfers) && transfers.length > 0) {
+          const lastTransfer = transfers[0];
+          // Se foi transferido pra este usuário e ainda não notificou
+          if (lastTransfer.para_usuario === currentUser.usuario &&
+              !transferenciasNotificadas.includes(conversa.de)) {
+
+            // Mostrar notificação
+            mostrarNotificacaoTransferencia(conversa.de, conversa.nome, lastTransfer.de_nome);
+            transferenciasNotificadas.push(conversa.de);
+          }
+        }
+      } catch(e) {}
+    }
+
+    sessionStorage.setItem('_transfersNotificadas', JSON.stringify(transferenciasNotificadas));
+  } catch(e) {
+    // Silencioso
+  }
+}
+
+function mostrarNotificacaoTransferencia(de, nomeCliente, deQuem) {
+  const notifId = 'notif_' + Math.random().toString(36).substr(2,9);
+  const nomeClienteSafe = escHtml(nomeCliente || de);
+  const deQuemSafe = escHtml(deQuem);
+
+  let html = `
+    <div id="${notifId}" style="position:fixed;bottom:20px;right:20px;background:white;border-radius:8px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,0.15);border-left:4px solid #10b981;max-width:350px;z-index:10000;cursor:pointer;transition:all 0.3s" onclick="abrirTransferenciaNotif('${de}','${nomeClienteSafe}'); document.getElementById('${notifId}').remove()">
+      <div style="font-weight:600;color:#065f46;font-size:12px;margin-bottom:6px">↪️ TRANSFERÊNCIA RECEBIDA</div>
+      <div style="color:#374151;font-size:13px"><strong>${deQuemSafe}</strong> transferiu <strong>${nomeClienteSafe}</strong> para você</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:8px">Clique para abrir conversa</div>
+    </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  // Remove automaticamente depois de 10 segundos
+  setTimeout(() => {
+    const el = document.getElementById(notifId);
+    if (el) el.remove();
+  }, 10000);
+}
+
+function abrirTransferenciaNotif(de, nome) {
+  goTo('atendimentos');
+  setTimeout(() => {
+    openChatMeta(de, nome);
+  }, 300);
+}
+
+function _iniciarPollAtendimentos() {
+  _pararPollAtendimentos();
+  carregarConversasMeta();
+  carregarConversasInstagram();
+  window._attPollTimer = setInterval(() => {
+    if (uiState.currentTab === 'atendimentos') {
+      carregarConversasMeta();
+      carregarConversasInstagram();
+    } else {
+      _pararPollAtendimentos();
+    }
+  }, 30000);  // 30 segundos — silencioso, sem animação
+}
+
+function _pararPollAtendimentos() {
+  if (window._attPollTimer) {
+    clearInterval(window._attPollTimer);
+    window._attPollTimer = null;
+  }
+}
+
+async function atualizarAtendimentos() {
+  const btn = document.getElementById('attRefreshBtn');
+  if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+  await carregarConversasMeta();
+  if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = ''; }
 }
 
 // Abre conversa da Meta e carrega mensagens do backend
@@ -3557,9 +3680,11 @@ async function openChatMeta(de, nome) {
       </div>
       <div style="display:flex;gap:6px">
         <a href="https://wa.me/${fone}" target="_blank" class="btn btn-green" style="font-size:11px;padding:5px 10px;text-decoration:none">💬 WhatsApp</a>
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="abrirTransferConversaModal('${de}')">↪️ Transferir</button>
         <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="finalizeChat()">✅ Finalizar</button>
       </div>
     </div>
+    <div id="transferInfo" style="padding:8px 12px;background:#f0f9ff;border-bottom:1px solid #e0e7ff;font-size:11px;display:none"></div>
     <div class="msgs" id="msgBox" style="flex:1;overflow-y:auto;padding:12px"></div>
     <div class="msg-inp-row">
       <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsg()">
@@ -3572,6 +3697,17 @@ async function openChatMeta(de, nome) {
     const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
     S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
     renderMsgsMeta(de);
+
+    // Carregar transferências
+    const transfers = await api('GET', '/api/whatsapp/transferencias/' + de);
+    if (Array.isArray(transfers) && transfers.length > 0) {
+      const lastTransfer = transfers[0];
+      const infoEl = document.getElementById('transferInfo');
+      if (infoEl) {
+        infoEl.innerHTML = `<strong>↪️ Transferido:</strong> ${escHtml(lastTransfer.de_nome)} → ${escHtml(lastTransfer.para_nome)} em ${lastTransfer.criado_em?.slice(0,16) || ''}`;
+        infoEl.style.display = 'block';
+      }
+    }
   } catch(e) { console.error(e); }
 
   // Polling a cada 5s para novas mensagens
@@ -3586,17 +3722,24 @@ async function openChatMeta(de, nome) {
   }, 5000);
 }
 
-function renderMsgsMeta(de) {
-  const msgs = (state.metaMensagens || {})[de] || [];
+function renderMsgsMeta(de, tipo='whatsapp') {
+  const msgStore = tipo === 'instagram' ? state.instagramMensagens : state.metaMensagens;
+  const msgs = (msgStore || {})[de] || [];
   const box = document.getElementById('msgBox');
   if (!box) return;
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const isInstagram = tipo === 'instagram';
+
   box.innerHTML = msgs.map(m => {
     const enviada = m.direcao === 'enviada';
     const hora = (m.criado_em||'').slice(11,16);
+    const nomeSender = m.nome || (enviada ? 'Você' : 'Desconhecido');
+    const bgColor = isInstagram ? (enviada ? '#e0f2fe' : '#fff') : (enviada ? '#dcf8c6' : '#fff');
+
     return `<div style="margin:4px 8px;display:flex;flex-direction:column;align-items:${enviada?'flex-end':'flex-start'}">
-      <div style="max-width:80%;background:${enviada?'#dcf8c6':'#fff'};border-radius:12px;padding:8px 12px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.1)">
-        ${escHtml(m.texto||'')}
+      <div style="max-width:80%;background:${bgColor};border-radius:12px;padding:8px 12px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.1)">
+        <div style="font-weight:700;font-size:12px;margin-bottom:4px">${escHtml(nomeSender)}</div>
+        <div>${escHtml(m.texto||'')}</div>
         <div style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right">${hora}</div>
       </div>
     </div>`;
@@ -3640,6 +3783,20 @@ function getAttChats(canal) {
       msg: c.ultima_msg || '', time: (c.ultima||'').slice(11,16),
       unread: c.nao_lidas || 0, canal: 'whatsapp',
       accountName: 'Meta Oficial', isMeta: true,
+      status: 'active', isWhatsApp: true,
+    });
+  });
+
+  // Instagram — Meta Cloud API
+  (state.instagramConversas || []).forEach(c => {
+    const chatId = 'instagram-' + c.de;
+    if (seen.has(chatId)) return;
+    seen.add(chatId);
+    chats.push({
+      id: chatId, name: c.nome || '@' + (c.username || c.de), phone: c.de,
+      msg: c.ultima_msg || '', time: (c.ultima||'').slice(11,16),
+      unread: c.nao_lidas || 0, canal: 'instagram',
+      accountName: 'Instagram Direct', isInstagram: true,
       status: 'active',
     });
   });
@@ -3690,37 +3847,8 @@ function renderAttList(){
   const q=(document.getElementById('attSearch')||{value:''}).value.toLowerCase();
   let allChats=getAttChats(canal);
 
-  // Vendedor: só vê atendimentos onde foi explicitamente transferido
-  if(currentUser?.role === 'vendedor'){
-    const nomeVendedor = (currentUser.nome||'').toLowerCase();
-    const setorVendedor = (currentUser.setor||'vendas').toLowerCase();
-    // Buscar chats do canal de vendas que tiveram transferência para este vendedor/setor
-    const chatsTransferidos = new Set();
-    Object.entries(state.chatMsgs||{}).forEach(([canal, msgs])=>{
-      (msgs||[]).forEach(m=>{
-        if(m.tipo==='transfer'){
-          const dest = (m.destino||'').toLowerCase();
-          const nota = (m.nota||'').toLowerCase();
-          // Transferência para setor vendas ou para este vendedor pelo nome
-          if(dest.includes('vendas') || dest.includes('venda') ||
-             nota.includes(nomeVendedor) || nota.includes(setorVendedor)){
-            // Buscar o chatId do paciente transferido
-            const paciente = (m.paciente||'').toLowerCase();
-            allChats.forEach(ch=>{
-              if(ch.name.toLowerCase().includes(paciente.split('·')[0].trim())){
-                chatsTransferidos.add(ch.id);
-              }
-            });
-            // Também incluir chats do canal vendas
-            if(canal==='vendas') chatsTransferidos.add('canal_vendas_'+canal);
-          }
-        }
-      });
-    });
-    // Se não há transferências ainda, mostrar aviso
-    allChats = allChats.filter(ch => chatsTransferidos.has(ch.id));
-  }
-
+  // TODOS os usuários (admin, gestor, atendente, vendedor) veem TODAS as conversas
+  // A transferência é apenas para roteamento/visualização, não para filtro
   const filtered=allChats.filter(c=>!q||c.name.toLowerCase().includes(q)||(c.phone||'').includes(q));
   const STATUS_CHAT={active:{bg:'#d1fae5',col:'#065f46',lbl:'Em Atendimento'},waiting:{bg:'#fef3c7',col:'#92400e',lbl:'Aguardando'},resolved:{bg:'var(--z100)',col:'var(--z600)',lbl:'Resolvido'}};
 
@@ -3763,7 +3891,161 @@ function _abrirConversa(idx) {
   const c = window._attChatsMap && window._attChatsMap[idx];
   if (!c) return;
   if (c.isMeta) openChatMeta(c.phone, c.name);
+  else if (c.isInstagram) openChatInstagram(c.phone, c.name);
   else openChat(c.id, c.name, c.phone, c.accountName);
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// INSTAGRAM CHAT FUNCTIONS
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function openChatInstagram(de, nome) {
+  uiState.activeChat = 'instagram-' + de;
+  uiState.instagramChatDe = de;
+  uiState.instagramChatNome = nome;
+  renderAttList();
+
+  document.getElementById('attMain').innerHTML = `
+    <div class="att-chat-hdr">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="att-av">${escHtml((nome||'?').charAt(0))}</div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--z900)">${escHtml(nome||de)}</div>
+          <div style="font-size:11px;color:var(--z500)">@${escHtml(de)} · via Instagram Direct 📸</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="abrirTransferConversaInstagramModal('${de}')">↪️ Transferir</button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="finalizeChat()">✅ Finalizar</button>
+      </div>
+    </div>
+    <div id="transferInfoInstagram" style="padding:8px 12px;background:#f3f4f6;border-bottom:1px solid #e5e7eb;font-size:11px;display:none"></div>
+    <div class="msgs" id="msgBox" style="flex:1;overflow-y:auto;padding:12px"></div>
+    <div class="msg-inp-row">
+      <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsgInstagram()">
+      <button class="send-btn" onclick="sendMsgInstagram()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>`;
+
+  try {
+    const msgs = await api('GET', '/api/instagram/mensagens/' + de);
+    S(s => { s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[de] = msgs; });
+    renderMsgsMeta(de, 'instagram');
+
+    // Carregar transferências Instagram
+    const transfers = await api('GET', '/api/instagram/transferencias/' + de);
+    if (Array.isArray(transfers) && transfers.length > 0) {
+      const lastTransfer = transfers[0];
+      const infoEl = document.getElementById('transferInfoInstagram');
+      if (infoEl) {
+        infoEl.innerHTML = `<strong>↪️ Transferido:</strong> ${escHtml(lastTransfer.de_nome)} → ${escHtml(lastTransfer.para_nome)} em ${lastTransfer.criado_em?.slice(0,16) || ''}`;
+        infoEl.style.display = 'block';
+      }
+    }
+  } catch(e) { console.error(e); }
+
+  // Polling a cada 5s
+  if (window._instagramPollTimer) clearInterval(window._instagramPollTimer);
+  window._instagramPollTimer = setInterval(async () => {
+    if (uiState.instagramChatDe !== de) { clearInterval(window._instagramPollTimer); return; }
+    try {
+      const msgs = await api('GET', '/api/instagram/mensagens/' + de);
+      S(s => { s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[de] = msgs; });
+      renderMsgsMeta(de, 'instagram');
+    } catch(e) {}
+  }, 5000);
+}
+
+async function sendMsgInstagram() {
+  const inp = document.getElementById('msgInput');
+  if (!inp || !inp.value.trim() || !uiState.instagramChatDe) return;
+
+  const txt = inp.value.trim();
+  inp.value = '';
+
+  try {
+    await api('POST', '/api/instagram/enviar', {
+      para: uiState.instagramChatDe,
+      texto: txt
+    });
+
+    await new Promise(r => setTimeout(r, 300));
+    const msgs = await api('GET', `/api/instagram/mensagens/${uiState.instagramChatDe}`);
+    S(s => { s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[uiState.instagramChatDe] = msgs; });
+    renderMsgsMeta(uiState.instagramChatDe, 'instagram');
+    await carregarConversasInstagram();
+  } catch(e) {
+    toast('Erro ao enviar: ' + e.message, 'error');
+  }
+}
+
+function abrirTransferConversaInstagramModal(de) {
+  let usuarios = state.usuarios || [];
+
+  if (usuarios.length === 0) {
+    api('GET', '/api/usuarios').then(data => {
+      S(s => s.usuarios = data || []);
+      usuarios = data || [];
+      abrirTransferConversaInstagramModal(de);
+    }).catch(e => toast('Erro ao carregar usuários', 'error'));
+    return;
+  }
+
+  let modalId = 'transferInstagramModal_' + Math.random().toString(36).substr(2,9);
+  let html = `
+    <div id="${modalId}" class="modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999">
+      <div style="background:white;border-radius:8px;padding:20px;max-width:400px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
+        <h3 style="margin:0 0 16px 0">↪️ Transferir Conversa Instagram</h3>
+
+        <div style="margin:12px 0">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px">Transferir para (Usuário):</label>
+          <select id="transferParaUsuarioIG" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px">
+            <option value="">-- Selecionar usuário --</option>
+            ${usuarios.map(u => `<option value="${escHtml(u.usuario)}" data-nome="${escHtml(u.nome)}" data-setor="${escHtml(u.setor||'')}">${escHtml(u.nome)} (${u.role})</option>`).join('')}
+          </select>
+        </div>
+
+        <div style="margin:12px 0">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px">Motivo (opcional):</label>
+          <input type="text" id="transferMotivoIG" placeholder="Ex: Cliente solicitou atendimento específico" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;font-size:12px">
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="document.getElementById('${modalId}').remove()">Cancelar</button>
+          <button class="btn btn-green" onclick="transferirConversaInstagram('${de}','${modalId}')">✓ Transferir</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function transferirConversaInstagram(de, modalId) {
+  const select = document.getElementById('transferParaUsuarioIG');
+  if (!select.value) { toast('Selecione um usuário', 'error'); return; }
+
+  const option = select.options[select.selectedIndex];
+  const paraUsuario = select.value;
+  const paraNome = option.getAttribute('data-nome');
+  const paraSetor = option.getAttribute('data-setor');
+  const motivo = document.getElementById('transferMotivoIG')?.value || '';
+
+  try {
+    await api('POST', '/api/instagram/transferir', {
+      conversa_de: de,
+      para_usuario: paraUsuario,
+      para_nome: paraNome,
+      para_setor: paraSetor,
+      motivo: motivo
+    });
+
+    toast('Conversa transferida!', 'success');
+    document.getElementById(modalId)?.remove();
+    openChatInstagram(de, uiState.instagramChatNome);
+  } catch(e) {
+    toast('Erro ao transferir: ' + e.message, 'error');
+  }
 }
 
 function openChat(id, name, phone, accountName=''){
@@ -3825,14 +4107,17 @@ function sendMsg(){
   // Conversa Meta Cloud API
   if (uiState.activeChat.startsWith('meta-') && uiState.metaChatDe) {
     const de = uiState.metaChatDe;
-    S(s => {
-      s.metaMensagens = s.metaMensagens || {};
-      s.metaMensagens[de] = s.metaMensagens[de] || [];
-      s.metaMensagens[de].push({ texto: txt, direcao: 'enviada', criado_em: new Date().toISOString() });
-    });
-    renderMsgsMeta(de, '');
+    // NÃO adiciona à lista local — espera confirmação do servidor
     api('POST', '/api/whatsapp/enviar', { para: de, texto: txt })
-      .then(() => carregarConversasMeta())
+      .then(async () => {
+        // Aguarda servidor processar
+        await new Promise(r => setTimeout(r, 300));
+        // Refrescar conversa e mensagens do servidor com timestamp correto
+        await carregarConversasMeta();
+        const msgs = await api('GET', `/api/whatsapp/mensagens/${de}`);
+        S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+        renderMsgsMeta(de, '');
+      })
       .catch(e => toast('Erro ao enviar: ' + e.message, 'error'));
     return;
   }
@@ -3857,6 +4142,79 @@ function sendMsg(){
 }
 
 function finalizeChat(){toast('Atendimento finalizado!','success');}
+
+// ── TRANSFERÊNCIA DE CONVERSAS ───────────────────────────────────────────────
+function abrirTransferConversaModal(de) {
+  // Carrega usuarios do servidor se não estiver em cache
+  let usuarios = state.usuarios || [];
+
+  // Se não tem usuarios, carrega do servidor
+  if (usuarios.length === 0) {
+    api('GET', '/api/usuarios').then(data => {
+      S(s => s.usuarios = data || []);
+      usuarios = data || [];
+      abrirTransferConversaModal(de); // Tenta novamente
+    }).catch(e => toast('Erro ao carregar usuários', 'error'));
+    return;
+  }
+
+  // Criar modal dinâmico
+  let modalId = 'transferModal_' + Math.random().toString(36).substr(2,9);
+  let html = `
+    <div id="${modalId}" class="modal-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999">
+      <div style="background:white;border-radius:8px;padding:20px;max-width:400px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2)">
+        <h3 style="margin:0 0 16px 0">↪️ Transferir Conversa WhatsApp</h3>
+
+        <div style="margin:12px 0">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px">Transferir para (Usuário):</label>
+          <select id="transferParaUsuario" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px">
+            <option value="">-- Selecionar usuário --</option>
+            ${usuarios.map(u => `<option value="${escHtml(u.usuario)}" data-nome="${escHtml(u.nome)}" data-setor="${escHtml(u.setor||'')}">${escHtml(u.nome)} (${u.role})</option>`).join('')}
+          </select>
+        </div>
+
+        <div style="margin:12px 0">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px">Motivo (opcional):</label>
+          <input type="text" id="transferMotivo" placeholder="Ex: Cliente solicitou vendedor" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;font-size:12px">
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="document.getElementById('${modalId}').remove()">Cancelar</button>
+          <button class="btn btn-green" onclick="transferirConversa('${de}','${modalId}')">✓ Transferir</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function transferirConversa(de, modalId) {
+  const select = document.getElementById('transferParaUsuario');
+  if (!select.value) { toast('Selecione um usuário', 'error'); return; }
+
+  const option = select.options[select.selectedIndex];
+  const paraUsuario = select.value;
+  const paraNome = option.getAttribute('data-nome');
+  const paraSetor = option.getAttribute('data-setor');
+  const motivo = document.getElementById('transferMotivo')?.value || '';
+
+  try {
+    await api('POST', '/api/whatsapp/transferir', {
+      conversa_de: de,
+      para_usuario: paraUsuario,
+      para_nome: paraNome,
+      para_setor: paraSetor,
+      motivo: motivo
+    });
+
+    toast('Conversa transferida!', 'success');
+    document.getElementById(modalId)?.remove();
+    // Recarregar chat para mostrar nova transferência
+    openChatMeta(de, uiState.metaChatNome);
+  } catch(e) {
+    toast('Erro ao transferir: ' + e.message, 'error');
+  }
+}
 
 // ── Confirmar pagamento rápido (via atendimento WhatsApp) ─────────────────────
 function confirmarPagamentoRapido(chatId, nome) {
@@ -5402,6 +5760,24 @@ async function testarWppAuto() {
 function toggleWppAutoAtivo(checked) {
   const lbl = document.getElementById('wppAutoAtivoLabel');
   if (lbl) { lbl.textContent = checked ? 'Ativado ✅' : 'Desativado'; lbl.style.color = checked ? 'var(--green)' : 'var(--z400)'; }
+}
+
+function setWppTipo(tipo) {
+  const camposMeta  = document.getElementById('camposMeta');
+  const camposEvol  = document.getElementById('camposEvolution');
+  const btnMeta     = document.getElementById('btnTipoMeta');
+  const btnEvol     = document.getElementById('btnTipoEvol');
+  if (tipo === 'meta') {
+    if (camposMeta) camposMeta.style.display = 'grid';
+    if (camposEvol) camposEvol.style.display = 'none';
+    if (btnMeta) { btnMeta.style.border = '2px solid #1877F2'; btnMeta.style.background = '#EBF3FF'; btnMeta.style.color = '#1877F2'; }
+    if (btnEvol) { btnEvol.style.border = '2px solid var(--z200)'; btnEvol.style.background = 'none'; btnEvol.style.color = 'var(--z500)'; }
+  } else {
+    if (camposMeta) camposMeta.style.display = 'none';
+    if (camposEvol) camposEvol.style.display = 'grid';
+    if (btnMeta) { btnMeta.style.border = '2px solid var(--z200)'; btnMeta.style.background = 'none'; btnMeta.style.color = 'var(--z500)'; }
+    if (btnEvol) { btnEvol.style.border = '2px solid #10b981'; btnEvol.style.background = '#ecfdf5'; btnEvol.style.color = '#059669'; }
+  }
 }
 
 function loadWppApiConfig() {

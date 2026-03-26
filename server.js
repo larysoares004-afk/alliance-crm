@@ -145,12 +145,27 @@ db.exec(`CREATE TABLE IF NOT EXISTS wpp_contas (
 
 // Inserir conta padrão Alliance se não existir
 try {
-  const contaExiste = db.prepare("SELECT id FROM wpp_contas WHERE phone_id='1025821790609502'").get();
+  const contaExiste = db.prepare("SELECT id,token FROM wpp_contas WHERE phone_id='1025821790609502'").get();
   if (!contaExiste) {
     db.prepare(`INSERT INTO wpp_contas (id,nome,phone_id,biz_id,numero,ativo) VALUES (?,?,?,?,?,1)`)
       .run('alliance-principal', 'Alliance Optometria BA', '1025821790609502', '789454576960299', '+55 77 81611475');
   }
-} catch(e) {}
+  // Migração: se alliance-principal não tem token, tenta recuperar do config global
+  const contaAlliance = db.prepare("SELECT id,token FROM wpp_contas WHERE id='alliance-principal'").get();
+  if (contaAlliance && !contaAlliance.token) {
+    const cfgRow = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+    if (cfgRow) {
+      try {
+        const cfg = JSON.parse(cfgRow.valor);
+        if (cfg.token) {
+          db.prepare("UPDATE wpp_contas SET token=?,phone_id=?,biz_id=? WHERE id='alliance-principal'")
+            .run(cfg.token, cfg.phoneId||'1025821790609502', cfg.bizId||'789454576960299');
+          console.log('✅ Token da Alliance recuperado do config e aplicado à conta.');
+        }
+      } catch(e) {}
+    }
+  }
+} catch(e) { console.error('Erro ao configurar conta Alliance:', e.message); }
 
 // Tabela de mensagens WhatsApp (Meta Cloud API)
 db.exec(`CREATE TABLE IF NOT EXISTS wpp_mensagens (
@@ -167,6 +182,65 @@ db.exec(`CREATE TABLE IF NOT EXISTS wpp_mensagens (
   criado_em   TEXT DEFAULT (datetime('now','localtime'))
 )`);
 try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN conta_id TEXT"); } catch(e) {}
+
+// Tabela de transferências de conversas
+db.exec(`CREATE TABLE IF NOT EXISTS wpp_transferencias (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversa_de     TEXT NOT NULL,
+  de_usuario      TEXT NOT NULL,
+  de_nome         TEXT NOT NULL,
+  para_usuario    TEXT NOT NULL,
+  para_nome       TEXT NOT NULL,
+  de_setor        TEXT,
+  para_setor      TEXT,
+  motivo          TEXT,
+  criado_em       TEXT DEFAULT (datetime('now','localtime')),
+  UNIQUE(conversa_de, criado_em)
+)`);
+
+// ════════════════════════════════════════════════════════════════════════════════
+// INSTAGRAM DIRECT MESSAGES
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Tabela de mensagens Instagram
+db.exec(`CREATE TABLE IF NOT EXISTS instagram_mensagens (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  igid        TEXT UNIQUE,
+  de          TEXT NOT NULL,
+  nome        TEXT,
+  username    TEXT,
+  texto       TEXT,
+  tipo        TEXT DEFAULT 'text',
+  direcao     TEXT DEFAULT 'recebida',
+  lido        INTEGER DEFAULT 0,
+  criado_em   TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
+// Tabela de conversas Instagram (para rastrear conta)
+db.exec(`CREATE TABLE IF NOT EXISTS instagram_contas (
+  id              TEXT PRIMARY KEY,
+  nome            TEXT,
+  username        TEXT,
+  business_id     TEXT,
+  token           TEXT,
+  ativo           INTEGER DEFAULT 1,
+  criado_em       TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
+// Tabela de transferências Instagram
+db.exec(`CREATE TABLE IF NOT EXISTS instagram_transferencias (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversa_de     TEXT NOT NULL,
+  de_usuario      TEXT NOT NULL,
+  de_nome         TEXT NOT NULL,
+  para_usuario    TEXT NOT NULL,
+  para_nome       TEXT NOT NULL,
+  de_setor        TEXT,
+  para_setor      TEXT,
+  motivo          TEXT,
+  criado_em       TEXT DEFAULT (datetime('now','localtime')),
+  UNIQUE(conversa_de, criado_em)
+)`);
 
 // ── Migrações de schema ───────────────────────────────────────────────────────
 try { db.exec("ALTER TABLE leads ADD COLUMN unidade TEXT DEFAULT 'Conquista'"); } catch(e) { /* já existe */ }
@@ -260,7 +334,7 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   db.prepare("UPDATE usuarios SET ultimo_acesso=datetime('now','localtime') WHERE id=?").run(u.id);
 
   const payload = { id: u.id, nome: u.nome, usuario: u.usuario, cargo: u.cargo, role: u.role, setor: u.setor };
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '365d' });
 
   const isProduction = process.env.NODE_ENV === 'production';
   res.cookie('crm_token', token, {
@@ -311,8 +385,9 @@ app.put('/api/auth/me', auth, (req, res) => {
 // USUÁRIOS
 // ════════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/usuarios', auth, requireRole('admin','gestor'), (req, res) => {
-  res.json(db.prepare('SELECT id,nome,usuario,cargo,role,setor,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY id').all());
+app.get('/api/usuarios', auth, (req, res) => {
+  // Todos os usuários autenticados podem ver lista de usuários (para transfers, etc)
+  res.json(db.prepare('SELECT id,nome,usuario,cargo,role,setor,ativo,criado_em,ultimo_acesso FROM usuarios WHERE ativo=1 ORDER BY nome').all());
 });
 
 app.post('/api/usuarios', auth, requireRole('admin','gestor'), (req, res) => {
@@ -527,10 +602,15 @@ app.put('/api/config/whatsapp-auto', auth, requireRole('admin','gestor'), (req, 
 
 // Listar contas
 app.get('/api/whatsapp/contas', auth, (req, res) => {
-  const contas = db.prepare(`SELECT id,nome,phone_id,biz_id,numero,ativo,criado_em,
-    CASE WHEN token IS NOT NULL AND token!='' THEN 1 ELSE 0 END as token_ok
-    FROM wpp_contas ORDER BY criado_em`).all();
-  res.json(contas);
+  try {
+    const contas = db.prepare(`SELECT id,nome,phone_id,biz_id,numero,ativo,criado_em,
+      CASE WHEN token IS NOT NULL AND token!='' THEN 1 ELSE 0 END as token_ok
+      FROM wpp_contas ORDER BY criado_em`).all();
+    res.json(contas);
+  } catch(e) {
+    console.error('❌ GET /api/whatsapp/contas erro:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // Adicionar/atualizar conta
@@ -549,6 +629,38 @@ app.post('/api/whatsapp/contas', auth, requireRole('admin','gestor'), (req, res)
 app.delete('/api/whatsapp/contas/:id', auth, requireRole('admin','gestor'), (req, res) => {
   db.prepare('DELETE FROM wpp_contas WHERE id=?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// Transferir conversa para outro usuário/setor
+app.post('/api/whatsapp/transferir', auth, (req, res) => {
+  const { conversa_de, para_usuario, para_nome, para_setor, motivo } = req.body;
+  if (!conversa_de || !para_usuario || !para_nome) {
+    return res.status(400).json({ erro: 'Dados incompletos' });
+  }
+  const usuarioAtual = req.user?.usuario || 'desconhecido';
+  const nomeAtual = req.user?.nome || 'Desconhecido';
+  const setorAtual = req.user?.setor || 'desconhecido';
+
+  try {
+    db.prepare(`INSERT INTO wpp_transferencias
+      (conversa_de, de_usuario, de_nome, para_usuario, para_nome, de_setor, para_setor, motivo)
+      VALUES (?,?,?,?,?,?,?,?)`).run(
+      conversa_de, usuarioAtual, nomeAtual, para_usuario, para_nome, setorAtual, para_setor, motivo
+    );
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// Buscar histórico de transferências de uma conversa
+app.get('/api/whatsapp/transferencias/:de', auth, (req, res) => {
+  const transfers = db.prepare(`
+    SELECT * FROM wpp_transferencias
+    WHERE conversa_de=?
+    ORDER BY criado_em DESC
+  `).all(req.params.de);
+  res.json(transfers || []);
 });
 
 // Buscar token de uma conta pelo phone_id (usado pelo webhook)
@@ -605,11 +717,12 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       const contato  = contatos.find(c => c.wa_id === de);
       const nome     = contato?.profile?.name || de;
 
-      // Usa timestamp da Meta convertido para horário de Brasília (UTC-3)
+      // Converte timestamp Meta (Unix/UTC) para horário de Brasília (UTC-3)
       const tsMeta   = msg.timestamp ? parseInt(msg.timestamp) : Math.floor(Date.now()/1000);
-      const dtBrasil = new Date(tsMeta * 1000);
-      dtBrasil.setHours(dtBrasil.getHours() - 3);
-      const criadoEm = dtBrasil.toISOString().replace('T',' ').slice(0,19);
+      const dtBrasil = new Date((tsMeta * 1000) - (3 * 60 * 60 * 1000));
+      const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
+      const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
+      const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
 
       try {
         db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
@@ -621,10 +734,65 @@ app.post('/api/whatsapp/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
+// ════════════════════════════════════════════════════════════════════════════════
+// INSTAGRAM WEBHOOK
+// ════════════════════════════════════════════════════════════════════════════════
+
+const INSTAGRAM_VERIFY_TOKEN = 'alliance_instagram_2024';
+
+// Verificar webhook Instagram (GET)
+app.get('/api/instagram/webhook', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token === INSTAGRAM_VERIFY_TOKEN) {
+    console.log('✅ Webhook Instagram verificado pela Meta');
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+});
+
+// Receber mensagens do Instagram (POST)
+app.post('/api/instagram/webhook', (req, res) => {
+  try {
+    const body = req.body;
+    if (body.object !== 'instagram') return res.sendStatus(200);
+    const entry = body.entry?.[0];
+    const messaging = entry?.messaging || [];
+
+    messaging.forEach(msg => {
+      if (!msg.message) return; // Ignora eventos que não são mensagens
+
+      const de       = msg.sender.id;  // Instagram user ID
+      const igid     = msg.message.mid; // Message ID
+      const tipo     = 'text';
+      const texto    = msg.message.text || '[Mensagem]';
+      const nome     = msg.sender.name || `Usuario ${de}`;
+      const username = msg.sender.username || de;
+
+      // Timestamp
+      const tsMeta   = msg.timestamp ? parseInt(msg.timestamp) : Math.floor(Date.now()/1000);
+      const dtBrasil = new Date((tsMeta * 1000) - (3 * 60 * 60 * 1000));
+      const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
+      const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
+      const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
+
+      try {
+        db.prepare(`INSERT OR IGNORE INTO instagram_mensagens (igid, de, nome, username, texto, tipo, direcao, criado_em)
+                    VALUES (?,?,?,?,?,?,'recebida',?)`).run(igid, de, nome, username, texto, tipo, criadoEm);
+        console.log(`📸 Instagram recebido de ${nome} (@${username}): ${texto}`);
+      } catch(e) { console.error('Erro ao salvar msg ig:', e.message); }
+    });
+  } catch(e) { console.error('Erro webhook instagram:', e.message); }
+  res.sendStatus(200);
+});
+
 // Buscar conversas (lista de contatos)
 app.get('/api/whatsapp/conversas', auth, (req, res) => {
   const rows = db.prepare(`
-    SELECT de, nome,
+    SELECT de,
+           -- Pega o nome do contact de uma mensagem recebida (direcao='recebida')
+           (SELECT nome FROM wpp_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as nome,
            MAX(criado_em) as ultima,
            COUNT(*) as total,
            SUM(CASE WHEN lido=0 AND direcao='recebida' THEN 1 ELSE 0 END) as nao_lidas,
@@ -663,6 +831,10 @@ app.post('/api/whatsapp/enviar', auth, async (req, res) => {
   const { token, phone_id: phoneId } = conta;
   if (!token || !phoneId) return res.status(400).json({ erro: 'Token ou Phone ID faltando' });
 
+  // Incluir nome do sender na mensagem
+  const nomeSender = req.user?.nome || 'Atendente';
+  const textoComNome = `${nomeSender}: ${texto}`;
+
   try {
     const r = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
       method: 'POST',
@@ -671,14 +843,20 @@ app.post('/api/whatsapp/enviar', auth, async (req, res) => {
         messaging_product: 'whatsapp',
         to: para.replace(/\D/g, ''),
         type: 'text',
-        text: { body: texto }
+        text: { body: textoComNome }
       })
     });
     const data = await r.json();
     if (data.messages?.[0]?.id) {
-      db.prepare(`INSERT INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao)
-                  VALUES (?,?,?,?,'text','enviada')`).run(
-        data.messages[0].id, para.replace(/\D/g, ''), 'Você', texto
+      // Gera timestamp em horário de Brasília (UTC-3)
+      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+      const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
+      const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
+      const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
+      // Armazenar também com o nome do sender (não apenas "Você")
+      db.prepare(`INSERT INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
+                  VALUES (?,?,?,?,'text','enviada',?)`).run(
+        data.messages[0].id, para.replace(/\D/g, ''), nomeSender, texto, criadoEm
       );
       res.json({ ok: true });
     } else {
@@ -689,7 +867,21 @@ app.post('/api/whatsapp/enviar', auth, async (req, res) => {
 
 // Salvar config da Meta API
 app.put('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, res) => {
+  // Salvar config WhatsApp
   db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('whatsapp_meta', JSON.stringify(req.body));
+
+  // AUTO: Configurar Instagram com o MESMO token do WhatsApp
+  const { token } = req.body;
+  const INSTAGRAM_BUSINESS_ID = '17841448115950083'; // Alliance Optometria BA
+
+  if (token) {
+    const instagramConfig = {
+      token: token,
+      business_id: INSTAGRAM_BUSINESS_ID
+    };
+    db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('instagram_meta', JSON.stringify(instagramConfig));
+  }
+
   res.json({ ok: true });
 });
 
@@ -697,6 +889,116 @@ app.get('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, 
   const row = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
   if (!row) return res.json({});
   try { res.json(JSON.parse(row.valor)); } catch { res.json({}); }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// INSTAGRAM — ENDPOINTS
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Buscar conversas Instagram
+app.get('/api/instagram/conversas', auth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT de,
+           (SELECT nome FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as nome,
+           (SELECT username FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as username,
+           MAX(criado_em) as ultima,
+           COUNT(*) as total,
+           SUM(CASE WHEN lido=0 AND direcao='recebida' THEN 1 ELSE 0 END) as nao_lidas,
+           (SELECT texto FROM instagram_mensagens m2 WHERE m2.de=m.de ORDER BY m2.criado_em DESC LIMIT 1) as ultima_msg
+    FROM instagram_mensagens m
+    GROUP BY de
+    ORDER BY ultima DESC
+  `).all();
+  res.json(rows);
+});
+
+// Buscar mensagens de um usuário Instagram
+app.get('/api/instagram/mensagens/:de', auth, (req, res) => {
+  const msgs = db.prepare(`
+    SELECT * FROM instagram_mensagens WHERE de=? ORDER BY criado_em ASC
+  `).all(req.params.de);
+  // Marcar como lido
+  db.prepare(`UPDATE instagram_mensagens SET lido=1 WHERE de=? AND direcao='recebida'`).run(req.params.de);
+  res.json(msgs);
+});
+
+// Enviar mensagem Instagram (requer token configurado)
+app.post('/api/instagram/enviar', auth, async (req, res) => {
+  const { para, texto } = req.body;
+  if (!para || !texto) return res.status(400).json({ erro: 'Para e texto obrigatórios' });
+
+  // Buscar token Instagram do config
+  const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
+  if (!cfg) return res.status(400).json({ erro: 'Instagram não configurado' });
+
+  const config = JSON.parse(cfg.valor);
+  const { token, business_id } = config;
+  if (!token || !business_id) return res.status(400).json({ erro: 'Token ou Business ID faltando' });
+
+  // Incluir nome do sender
+  const nomeSender = req.user?.nome || 'Atendente';
+  const textoComNome = `${nomeSender}: ${texto}`;
+
+  try {
+    // Enviar via Graph API Instagram
+    const r = await fetch(`https://graph.instagram.com/v20.0/${business_id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({
+        recipient: { id: para },
+        message: { text: textoComNome }
+      })
+    });
+    const data = await r.json();
+
+    if (data.message_id) {
+      // Armazenar na base
+      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+      const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
+      const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
+      const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
+
+      db.prepare(`INSERT INTO instagram_mensagens (igid, de, nome, texto, tipo, direcao, criado_em)
+                  VALUES (?,?,?,?,'text','enviada',?)`).run(
+        data.message_id, para, nomeSender, texto, criadoEm
+      );
+      res.json({ ok: true });
+    } else {
+      res.status(400).json({ erro: data.error?.message || 'Erro ao enviar' });
+    }
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Transferir conversa Instagram
+app.post('/api/instagram/transferir', auth, (req, res) => {
+  const { conversa_de, para_usuario, para_nome, para_setor, motivo } = req.body;
+  if (!conversa_de || !para_usuario || !para_nome) {
+    return res.status(400).json({ erro: 'Dados incompletos' });
+  }
+  const usuarioAtual = req.user?.usuario || 'desconhecido';
+  const nomeAtual = req.user?.nome || 'Desconhecido';
+  const setorAtual = req.user?.setor || 'desconhecido';
+
+  try {
+    db.prepare(`INSERT INTO instagram_transferencias
+      (conversa_de, de_usuario, de_nome, para_usuario, para_nome, de_setor, para_setor, motivo)
+      VALUES (?,?,?,?,?,?,?,?)`).run(
+      conversa_de, usuarioAtual, nomeAtual, para_usuario, para_nome, setorAtual, para_setor, motivo
+    );
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// Buscar transferências Instagram
+app.get('/api/instagram/transferencias/:de', auth, (req, res) => {
+  const transfers = db.prepare(`
+    SELECT * FROM instagram_transferencias
+    WHERE conversa_de=?
+    ORDER BY criado_em DESC
+  `).all(req.params.de);
+  res.json(transfers || []);
 });
 
 // Sincronizar histórico de conversas da Meta API
@@ -736,6 +1038,33 @@ app.post('/api/whatsapp/sincronizar-historico', auth, requireRole('admin','gesto
     }
 
     res.json({ ok: true, mensagens: count, info: count===0 ? 'A API Meta só entrega mensagens novas via webhook. Envie uma mensagem para o número e ela aparecerá automaticamente.' : null });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
+});
+
+// Corrigir timestamps de mensagens antigas (fix one-time para mensagens com timestamp errado)
+app.post('/api/whatsapp/corrigir-timestamps', auth, requireRole('admin'), (req, res) => {
+  try {
+    // Mensagens enviadas têm timestamp 3h a mais (UTC em vez de UTC-3)
+    // Corrige subtraindo 3 horas das mensagens "enviadas" com criado_em >= 18:00
+    const rows = db.prepare(`
+      SELECT id, criado_em FROM wpp_mensagens
+      WHERE direcao='enviada' AND criado_em LIKE '%18:%' OR criado_em LIKE '%19:%' OR criado_em LIKE '%20:%' OR criado_em LIKE '%21:%' OR criado_em LIKE '%22:%' OR criado_em LIKE '%23:%'
+    `).all();
+
+    let fixed = 0;
+    rows.forEach(row => {
+      try {
+        const dt = new Date(row.criado_em);
+        const dtCorrigido = new Date(dt.getTime() - (3 * 60 * 60 * 1000));
+        const Y = dtCorrigido.getUTCFullYear(), M = String(dtCorrigido.getUTCMonth()+1).padStart(2,'0'), D = String(dtCorrigido.getUTCDate()).padStart(2,'0');
+        const H = String(dtCorrigido.getUTCHours()).padStart(2,'0'), Mi = String(dtCorrigido.getUTCMinutes()).padStart(2,'0'), S = String(dtCorrigido.getUTCSeconds()).padStart(2,'0');
+        const novoTs = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
+        db.prepare('UPDATE wpp_mensagens SET criado_em=? WHERE id=?').run(novoTs, row.id);
+        fixed++;
+      } catch(e) {}
+    });
+
+    res.json({ ok: true, corrigidas: fixed });
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
