@@ -3779,7 +3779,28 @@ function getAttChats(canal) {
   const chats = [];
   const seen = new Set();
 
+  console.log(`getAttChats('${canal}'):`, `metaConversas=${(state.metaConversas||[]).length}`, `instagramConversas=${(state.instagramConversas||[]).length}`);
+
   if (canal === 'instagram') {
+    // Instagram via Meta Cloud API
+    const instagramChats = (state.instagramConversas || []);
+    console.log(`📸 Processando ${instagramChats.length} conversas Instagram...`);
+
+    instagramChats.forEach((c, idx) => {
+      console.log(`  [${idx}] Instagram conversa:`, c);
+      const chatId = 'instagram-' + c.de;
+      if (seen.has(chatId)) return;
+      seen.add(chatId);
+      chats.push({
+        id: chatId, name: c.nome || '@' + (c.username || c.de), phone: c.de,
+        msg: c.ultima_msg || '', time: (c.ultima||'').slice(11,16),
+        unread: c.nao_lidas || 0, canal: 'instagram',
+        accountName: 'Instagram Direct', isInstagram: true,
+        status: 'active',
+      });
+    });
+
+    // Legacy Instagram via chatMsgs (compatibilidade)
     Object.entries(state.chatMsgs || {}).forEach(([chatId, msgs]) => {
       if (!chatId.startsWith('insta-') || !msgs || !msgs.length) return;
       const lastMsg = msgs[msgs.length - 1];
@@ -3797,6 +3818,8 @@ function getAttChats(canal) {
         accountName: 'Instagram Direct',
       });
     });
+
+    console.log(`📸 Total de chats Instagram após processamento: ${chats.length}`);
     return chats;
   }
 
