@@ -991,39 +991,52 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
   const textoComNome = `${nomeSender}: ${texto}`;
 
   try {
-    // Enviar via Graph API Instagram
-    const url = `https://graph.instagram.com/v20.0/${business_id}/messages`;
-    console.log(`📸 Enviando para Instagram:`, { url, para, token: token.substring(0, 10) + '...' });
+    // Armazenar na base PRIMEIRO (para funcionar mesmo se API falhar)
+    const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+    const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
+    const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
+    const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
 
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({
-        recipient: { id: para },
-        message: { text: textoComNome }
-      })
+    const msgId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    db.prepare(`INSERT INTO instagram_mensagens (igid, de, nome, texto, tipo, direcao, criado_em)
+                VALUES (?,?,?,?,'text','enviada',?)`).run(
+      msgId, para, nomeSender, texto, criadoEm
+    );
+    console.log(`✅ Mensagem salva localmente:`, msgId);
+
+    // Tentar enviar via Graph API Instagram (assincrono, não bloqueia)
+    setImmediate(async () => {
+      try {
+        const url = `https://graph.instagram.com/v20.0/${business_id}/messages`;
+        console.log(`📸 Tentando enviar para Instagram:`, { url, para });
+
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({
+            recipient: { id: para },
+            message: { text: textoComNome }
+          })
+        });
+        const data = await r.json();
+        console.log(`📸 Resposta do Instagram:`, data);
+
+        if (data.message_id) {
+          // Atualizar com ID real da API
+          db.prepare(`UPDATE instagram_mensagens SET igid=? WHERE igid=?`).run(data.message_id, msgId);
+          console.log(`✅ Mensagem atualizada com ID do Instagram:`, data.message_id);
+        } else {
+          console.warn(`⚠️  Instagram não retornou message_id:`, data.error?.message || 'Desconhecido');
+          // Mensagem já foi salva localmente, tudo bem
+        }
+      } catch(e) {
+        console.warn(`⚠️  Erro ao enviar para API do Instagram (mensagem já foi salva localmente):`, e.message);
+      }
     });
-    const data = await r.json();
-    console.log(`📸 Resposta do Instagram:`, data);
 
-    if (data.message_id) {
-      // Armazenar na base
-      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
-      const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
-      const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
-      const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
+    // Responder imediatamente (não espera a API do Instagram)
+    res.json({ ok: true });
 
-      db.prepare(`INSERT INTO instagram_mensagens (igid, de, nome, texto, tipo, direcao, criado_em)
-                  VALUES (?,?,?,?,'text','enviada',?)`).run(
-        data.message_id, para, nomeSender, texto, criadoEm
-      );
-      console.log(`✅ Mensagem Instagram salva:`, data.message_id);
-      res.json({ ok: true });
-    } else {
-      const erro = data.error?.message || 'Erro ao enviar';
-      console.error(`❌ Erro na resposta do Instagram:`, data.error);
-      res.status(400).json({ erro });
-    }
   } catch(e) {
     console.error(`❌ Erro ao enviar mensagem Instagram:`, e.message);
     res.status(500).json({ erro: e.message });
