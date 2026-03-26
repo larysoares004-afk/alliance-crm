@@ -3790,15 +3790,19 @@ function getAttChats(canal) {
     console.log(`📸 Processando ${instagramChats.length} conversas Instagram...`);
 
     instagramChats.forEach((c, idx) => {
-      console.log(`  [${idx}] Instagram conversa:`, c);
       const chatId = 'instagram-' + c.de;
       if (seen.has(chatId)) return;
       seen.add(chatId);
+      // Usar nome real se disponível, senão @username, senão ID curto
+      const nomeExibir = (c.nome && !c.nome.startsWith('Usuario ')) ? c.nome
+        : c.username ? '@' + c.username
+        : '@' + c.de.substring(0, 10);
       chats.push({
-        id: chatId, name: c.nome || '@' + (c.username || c.de), phone: c.de,
+        id: chatId, name: nomeExibir, phone: c.de,
         msg: c.ultima_msg || '', time: (c.ultima||'').slice(11,16),
         unread: c.nao_lidas || 0, canal: 'instagram',
         accountName: 'Instagram Direct', isInstagram: true,
+        fotoUrl: c.foto_url || null,
         status: 'active',
       });
     });
@@ -3924,7 +3928,9 @@ function renderAttList(){
     ?`<div style="text-align:center;padding:24px;color:var(--z400);font-size:12px">Nenhuma mensagem ainda</div>`
     :filtered.map((c,i)=>`
     <div class="att-item${uiState.activeChat===c.id?' on':''}" onclick="_abrirConversa(${i})" style="cursor:pointer">
-      <div class="att-av">${escHtml(c.name.charAt(0))}</div>
+      <div class="att-av" style="${c.fotoUrl?'padding:0;overflow:hidden;background:transparent;':''}">
+        ${c.fotoUrl ? `<img src="${c.fotoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.parentElement.innerHTML='${escHtml(c.name.charAt(0))}'">` : escHtml(c.name.charAt(0))}
+      </div>
       <div class="att-info">
         <div style="display:flex;justify-content:space-between">
           <div class="att-name">${escHtml(c.name)}</div>
@@ -3958,10 +3964,17 @@ async function openChatInstagram(de, nome) {
   uiState.instagramChatNome = nome;
   renderAttList();
 
+  // Buscar foto do contato se disponível
+  const contato = (state.instagramConversas||[]).find(c => c.de === de);
+  const fotoUrl = contato?.foto_url || null;
+  const avatarHtml = fotoUrl
+    ? `<img src="${fotoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div class=att-av>${escHtml((nome||'?').charAt(0))}</div>'">`
+    : `<div class="att-av">${escHtml((nome||'?').charAt(0))}</div>`;
+
   document.getElementById('attMain').innerHTML = `
     <div class="att-chat-hdr">
       <div style="display:flex;align-items:center;gap:10px">
-        <div class="att-av">${escHtml((nome||'?').charAt(0))}</div>
+        ${avatarHtml}
         <div>
           <div style="font-size:13px;font-weight:700;color:var(--z900)">${escHtml(nome||de)}</div>
           <div style="font-size:11px;color:var(--z500)">@${escHtml(de)} · via Instagram Direct 📸</div>

@@ -803,6 +803,42 @@ app.post('/api/instagram/webhook', (req, res) => {
         db.prepare(`INSERT OR IGNORE INTO instagram_mensagens (igid, de, nome, username, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,?,'recebida',?)`).run(igid, de, nome, username, texto, tipo, criadoEm);
         console.log(`  ✅ [${idx}] Mensagem salva: de=${de}, igid=${igid}, texto="${texto}"`);
+
+        // Buscar nome e foto real do usuário Instagram via API (assincrono)
+        setImmediate(async () => {
+          try {
+            const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
+            if (!cfg) return;
+            const igCfg = JSON.parse(cfg.valor);
+            if (!igCfg.token) return;
+
+            // Buscar perfil do remetente
+            const r = await fetch(`https://graph.instagram.com/v20.0/${de}?fields=name,username,profile_pic&access_token=${igCfg.token}`);
+            const perfil = await r.json();
+            console.log(`📸 Perfil Instagram de ${de}:`, perfil);
+
+            if (perfil.name || perfil.username) {
+              const nomeReal = perfil.name || perfil.username || nome;
+              const usernameReal = perfil.username || username;
+              const foto = perfil.profile_pic || null;
+
+              // Atualizar todas as mensagens desse usuário com nome/username real
+              db.prepare(`UPDATE instagram_mensagens SET nome=?, username=? WHERE de=? AND direcao='recebida'`)
+                .run(nomeReal, usernameReal, de);
+
+              // Salvar foto se tiver coluna para isso
+              try {
+                db.exec(`ALTER TABLE instagram_mensagens ADD COLUMN foto_url TEXT`);
+              } catch(e) {} // coluna já existe
+              if (foto) {
+                db.prepare(`UPDATE instagram_mensagens SET foto_url=? WHERE de=?`).run(foto, de);
+              }
+              console.log(`  ✅ Nome atualizado: ${nomeReal} (@${usernameReal})`);
+            }
+          } catch(e) {
+            console.warn(`  ⚠️  Não foi possível buscar perfil Instagram:`, e.message);
+          }
+        });
       } catch(e) { console.error(`  ❌ [${idx}] Erro ao salvar:`, e.message); }
     });
   } catch(e) { console.error('❌ Erro webhook instagram:', e.message); }
@@ -925,10 +961,14 @@ app.get('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, 
 // Buscar conversas Instagram
 app.get('/api/instagram/conversas', auth, (req, res) => {
   try {
+    // Garantir coluna foto_url existe
+    try { db.exec(`ALTER TABLE instagram_mensagens ADD COLUMN foto_url TEXT`); } catch(e) {}
+
     const rows = db.prepare(`
       SELECT de,
              (SELECT nome FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as nome,
              (SELECT username FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as username,
+             (SELECT foto_url FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' AND foto_url IS NOT NULL LIMIT 1) as foto_url,
              MAX(criado_em) as ultima,
              COUNT(*) as total,
              SUM(CASE WHEN lido=0 AND direcao='recebida' THEN 1 ELSE 0 END) as nao_lidas,
@@ -937,7 +977,6 @@ app.get('/api/instagram/conversas', auth, (req, res) => {
       GROUP BY de
       ORDER BY ultima DESC
     `).all();
-    console.log(`📸 /api/instagram/conversas: Retornando ${rows.length} conversas`);
     res.json(rows);
   } catch(e) {
     console.error('📸 Erro ao buscar conversas Instagram:', e.message);
