@@ -3584,10 +3584,13 @@ async function carregarConversasMeta() {
 // Carregar conversas Instagram
 async function carregarConversasInstagram() {
   try {
+    console.log('📸 Carregando conversas Instagram...');
     const dados = await api('GET', '/api/instagram/conversas');
+    console.log('📸 Conversas carregadas:', dados);
     S(s => s.instagramConversas = dados || []);
     if (uiState.currentTab === 'atendimentos') renderAttList();
   } catch(e) {
+    console.error('📸 Erro ao carregar conversas Instagram:', e);
     // Silencioso — Instagram pode não estar configurado
   }
 }

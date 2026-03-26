@@ -924,19 +924,25 @@ app.get('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, 
 
 // Buscar conversas Instagram
 app.get('/api/instagram/conversas', auth, (req, res) => {
-  const rows = db.prepare(`
-    SELECT de,
-           (SELECT nome FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as nome,
-           (SELECT username FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as username,
-           MAX(criado_em) as ultima,
-           COUNT(*) as total,
-           SUM(CASE WHEN lido=0 AND direcao='recebida' THEN 1 ELSE 0 END) as nao_lidas,
-           (SELECT texto FROM instagram_mensagens m2 WHERE m2.de=m.de ORDER BY m2.criado_em DESC LIMIT 1) as ultima_msg
-    FROM instagram_mensagens m
-    GROUP BY de
-    ORDER BY ultima DESC
-  `).all();
-  res.json(rows);
+  try {
+    const rows = db.prepare(`
+      SELECT de,
+             (SELECT nome FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as nome,
+             (SELECT username FROM instagram_mensagens m2 WHERE m2.de=m.de AND m2.direcao='recebida' LIMIT 1) as username,
+             MAX(criado_em) as ultima,
+             COUNT(*) as total,
+             SUM(CASE WHEN lido=0 AND direcao='recebida' THEN 1 ELSE 0 END) as nao_lidas,
+             (SELECT texto FROM instagram_mensagens m2 WHERE m2.de=m.de ORDER BY m2.criado_em DESC LIMIT 1) as ultima_msg
+      FROM instagram_mensagens m
+      GROUP BY de
+      ORDER BY ultima DESC
+    `).all();
+    console.log(`📸 /api/instagram/conversas: Retornando ${rows.length} conversas`);
+    res.json(rows);
+  } catch(e) {
+    console.error('📸 Erro ao buscar conversas Instagram:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // Buscar mensagens de um usuário Instagram
