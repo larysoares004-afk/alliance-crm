@@ -812,28 +812,42 @@ app.post('/api/instagram/webhook', (req, res) => {
             const igCfg = JSON.parse(cfg.valor);
             if (!igCfg.token) return;
 
-            // Buscar perfil do remetente
-            const r = await fetch(`https://graph.instagram.com/v20.0/${de}?fields=name,username,profile_pic&access_token=${igCfg.token}`);
-            const perfil = await r.json();
-            console.log(`📸 Perfil Instagram de ${de}:`, perfil);
+            // Buscar perfil do remetente via API de conversas
+            const businessId = igCfg.business_id || '17841448115950083';
+            const convUrl = `https://graph.instagram.com/v20.0/${businessId}/conversations?user_id=${de}&fields=participants&access_token=${igCfg.token}`;
+            const rConv = await fetch(convUrl);
+            const convData = await rConv.json();
+            console.log(`📸 Conversas Instagram de ${de}:`, JSON.stringify(convData).substring(0, 300));
 
-            if (perfil.name || perfil.username) {
-              const nomeReal = perfil.name || perfil.username || nome;
-              const usernameReal = perfil.username || username;
-              const foto = perfil.profile_pic || null;
+            // Extrair nome/username dos participantes
+            let nomeReal = nome, usernameReal = username, foto = null;
+            const participantes = convData?.data?.[0]?.participants?.data || [];
+            const remetente = participantes.find(p => p.id === de) || participantes.find(p => p.id !== businessId);
+            if (remetente) {
+              nomeReal = remetente.name || remetente.username || nome;
+              usernameReal = remetente.username || username;
+              foto = remetente.profile_pic_uri || remetente.pic || null;
+              console.log(`  ✅ Perfil encontrado: ${nomeReal} (@${usernameReal})`);
+            }
 
-              // Atualizar todas as mensagens desse usuário com nome/username real
-              db.prepare(`UPDATE instagram_mensagens SET nome=?, username=? WHERE de=? AND direcao='recebida'`)
-                .run(nomeReal, usernameReal, de);
-
-              // Salvar foto se tiver coluna para isso
-              try {
-                db.exec(`ALTER TABLE instagram_mensagens ADD COLUMN foto_url TEXT`);
-              } catch(e) {} // coluna já existe
-              if (foto) {
-                db.prepare(`UPDATE instagram_mensagens SET foto_url=? WHERE de=?`).run(foto, de);
+            // Se ainda for "Usuario X", tentar buscar direto pelo ID
+            if (!remetente || nomeReal.startsWith('Usuario ')) {
+              const rDirect = await fetch(`https://graph.instagram.com/v20.0/${de}?fields=name,username,profile_picture_url&access_token=${igCfg.token}`);
+              const pDirect = await rDirect.json();
+              if (pDirect.name || pDirect.username) {
+                nomeReal = pDirect.name || pDirect.username || nomeReal;
+                usernameReal = pDirect.username || usernameReal;
+                foto = pDirect.profile_picture_url || foto;
+                console.log(`  ✅ Perfil direto: ${nomeReal} (@${usernameReal})`);
               }
-              console.log(`  ✅ Nome atualizado: ${nomeReal} (@${usernameReal})`);
+            }
+
+            // Atualizar banco
+            db.prepare(`UPDATE instagram_mensagens SET nome=?, username=? WHERE de=? AND direcao='recebida'`)
+              .run(nomeReal, usernameReal, de);
+            try { db.exec(`ALTER TABLE instagram_mensagens ADD COLUMN foto_url TEXT`); } catch(e) {}
+            if (foto) {
+              db.prepare(`UPDATE instagram_mensagens SET foto_url=? WHERE de=?`).run(foto, de);
             }
           } catch(e) {
             console.warn(`  ⚠️  Não foi possível buscar perfil Instagram:`, e.message);
