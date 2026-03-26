@@ -994,35 +994,26 @@ app.get('/api/instagram/mensagens/:de', auth, (req, res) => {
   res.json(msgs);
 });
 
-// Enviar mensagem Instagram (requer token configurado)
+// Enviar mensagem Instagram
 app.post('/api/instagram/enviar', auth, async (req, res) => {
   try {
     const { para, texto } = req.body;
-    console.log(`📸 /api/instagram/enviar: para=${para}, texto_len=${texto?.length}`);
 
     if (!para || !texto) {
       return res.status(400).json({ erro: 'Para e texto obrigatórios' });
     }
 
-    // Buscar token Instagram do config
-    const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
-    if (!cfg) {
-      return res.status(400).json({ erro: 'Instagram não configurado' });
-    }
-
-    let config;
+    // Buscar token — opcional, sem config ainda funciona (salva local)
+    let token = null, business_id = null;
     try {
-      config = JSON.parse(cfg.valor);
-    } catch(e) {
-      return res.status(400).json({ erro: 'Config Instagram inválido' });
-    }
+      const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
+      if (cfg) {
+        const c = JSON.parse(cfg.valor);
+        token = c.token || null;
+        business_id = c.business_id || null;
+      }
+    } catch(e) {}
 
-    const { token, business_id } = config;
-    if (!token || !business_id) {
-      return res.status(400).json({ erro: 'Token ou Business ID faltando' });
-    }
-
-  // Incluir nome do sender
     const nomeSender = req.user?.nome || 'Atendente';
     const textoComNome = `${nomeSender}: ${texto}`;
 
