@@ -865,24 +865,29 @@ app.post('/api/whatsapp/enviar', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
-// Salvar config da Meta API
+// Salvar config da Meta API — WHATSAPP APENAS
 app.put('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, res) => {
-  // Salvar config WhatsApp
+  // Salvar APENAS config WhatsApp (sem auto-config do Instagram)
   db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('whatsapp_meta', JSON.stringify(req.body));
-
-  // AUTO: Configurar Instagram com o MESMO token do WhatsApp
-  const { token } = req.body;
-  const INSTAGRAM_BUSINESS_ID = '17841448115950083'; // Alliance Optometria BA
-
-  if (token) {
-    const instagramConfig = {
-      token: token,
-      business_id: INSTAGRAM_BUSINESS_ID
-    };
-    db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('instagram_meta', JSON.stringify(instagramConfig));
-  }
-
   res.json({ ok: true });
+});
+
+// Salvar config da Meta API — INSTAGRAM APENAS
+app.put('/api/config/instagram-meta', auth, requireRole('admin','gestor'), (req, res) => {
+  // Salvar APENAS config Instagram
+  const { token, business_id } = req.body;
+  if (!token || !business_id) return res.status(400).json({ erro: 'Token e Business ID obrigatórios' });
+
+  const instagramConfig = { token, business_id };
+  db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('instagram_meta', JSON.stringify(instagramConfig));
+  res.json({ ok: true });
+});
+
+// Carregar config Instagram
+app.get('/api/config/instagram-meta', auth, requireRole('admin','gestor'), (req, res) => {
+  const row = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
+  if (!row) return res.json({});
+  try { res.json(JSON.parse(row.valor)); } catch { res.json({}); }
 });
 
 app.get('/api/config/whatsapp-meta', auth, requireRole('admin','gestor'), (req, res) => {

@@ -1097,6 +1097,30 @@ select.inp{cursor:pointer}
       </div>
     </div>
 
+    <!-- Campos Instagram (Meta) -->
+    <div style="padding:16px 20px;border-top:1px solid var(--z200)">
+      <div style="margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">📸 Instagram Direct (via Meta)</div>
+        <div style="font-size:12px;color:var(--z500);margin-bottom:10px">Configure um token separado do Instagram. Necessário para receber e enviar mensagens no Instagram Direct.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="grid-column:1/-1">
+          <label class="lbl">Instagram Access Token</label>
+          <input type="password" id="instagramToken" class="inp" placeholder="EAAB..." style="font-family:monospace;font-size:12px">
+          <div style="font-size:10px;color:var(--z400);margin-top:3px">Token de acesso do Instagram (diferente do WhatsApp) — começa com EAAB...</div>
+        </div>
+        <div>
+          <label class="lbl">Instagram Business ID</label>
+          <input type="text" id="instagramBusinessId" class="inp" placeholder="17841448115950083" style="font-family:monospace;font-size:12px" value="17841448115950083">
+          <div style="font-size:10px;color:var(--z400);margin-top:3px">ID da Conta de Negócios do Instagram</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px">
+        <button class="btn btn-primary" onclick="salvarInstagramConfig()" style="font-size:12px">💾 Salvar Instagram</button>
+        <span id="instagramStatus" style="align-self:center;font-size:11px;color:var(--z400)"></span>
+      </div>
+    </div>
+
     <!-- Campos Evolution (ocultos por padrão) -->
     <div id="camposEvolution" style="padding:16px 20px;display:none;grid-template-columns:1fr 1fr 1fr;gap:14px">
       <div>
@@ -5700,6 +5724,41 @@ async function salvarWppAuto() {
   }
 }
 
+// Salvar Instagram Config (separado do WhatsApp)
+async function salvarInstagramConfig() {
+  const token = document.getElementById('instagramToken')?.value?.trim();
+  const businessId = document.getElementById('instagramBusinessId')?.value?.trim();
+  const st = document.getElementById('instagramStatus');
+
+  if (!token || !businessId) {
+    toast('Preencha Token e Business ID do Instagram', 'error');
+    return;
+  }
+
+  if (st) st.textContent = 'Salvando...';
+  try {
+    await api('PUT', '/api/config/instagram-meta', { token, business_id: businessId });
+    toast('✅ Instagram configurado com sucesso!', 'success');
+    if (st) st.textContent = 'Salvo ✅';
+    // Carregar conversas do Instagram após salvar
+    await carregarConversasInstagram();
+  } catch(e) {
+    toast('Erro ao salvar Instagram: ' + e.message, 'error');
+    if (st) st.textContent = 'Erro ❌';
+  }
+}
+
+// Carregar config do Instagram ao abrir a aba WhatsApp
+async function carregarInstagramConfig() {
+  try {
+    const cfg = await api('GET', '/api/config/instagram-meta');
+    const tokenEl = document.getElementById('instagramToken');
+    const bidEl = document.getElementById('instagramBusinessId');
+    if (tokenEl && cfg.token) tokenEl.value = cfg.token;
+    if (bidEl && cfg.business_id) bidEl.value = cfg.business_id;
+  } catch(e) {}
+}
+
 // Busca histórico de conversas da Meta e salva no banco local
 async function sincronizarHistoricoMeta(token, phoneId, bizId) {
   // Se não recebeu args, tenta pegar dos campos do formulário ou localStorage
@@ -5799,6 +5858,8 @@ function loadWppApiConfig() {
       }
     }
   }).catch(()=>{});
+  // Carregar config Instagram também
+  carregarInstagramConfig();
   const cfg = JSON.parse(localStorage.getItem('alliance_wpp_api') || '{}');
   const t = document.getElementById('wppApiToken'); if(t && cfg.token)   t.value = cfg.token;
   const p = document.getElementById('wppPhoneId');  if(p && cfg.phoneId) p.value = cfg.phoneId;
