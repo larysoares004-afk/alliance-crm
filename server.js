@@ -957,40 +957,36 @@ app.get('/api/instagram/mensagens/:de', auth, (req, res) => {
 
 // Enviar mensagem Instagram (requer token configurado)
 app.post('/api/instagram/enviar', auth, async (req, res) => {
-  const { para, texto } = req.body;
-  console.log(`📸 /api/instagram/enviar: para=${para}, texto=${texto?.substring(0,50)}`);
-
-  if (!para || !texto) {
-    console.error(`📸 Validação falhou: para=${para}, texto=${texto}`);
-    return res.status(400).json({ erro: 'Para e texto obrigatórios' });
-  }
-
-  // Buscar token Instagram do config
-  const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
-  if (!cfg) {
-    console.error(`📸 Config Instagram não encontrado`);
-    return res.status(400).json({ erro: 'Instagram não configurado' });
-  }
-
-  let config;
   try {
-    config = JSON.parse(cfg.valor);
-  } catch(e) {
-    console.error(`📸 Erro ao parsear config Instagram:`, e.message);
-    return res.status(400).json({ erro: 'Config Instagram inválido' });
-  }
+    const { para, texto } = req.body;
+    console.log(`📸 /api/instagram/enviar: para=${para}, texto_len=${texto?.length}`);
 
-  const { token, business_id } = config;
-  if (!token || !business_id) {
-    console.error(`📸 Token ou Business ID faltando:`, { token: !!token, business_id });
-    return res.status(400).json({ erro: 'Token ou Business ID faltando' });
-  }
+    if (!para || !texto) {
+      return res.status(400).json({ erro: 'Para e texto obrigatórios' });
+    }
+
+    // Buscar token Instagram do config
+    const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
+    if (!cfg) {
+      return res.status(400).json({ erro: 'Instagram não configurado' });
+    }
+
+    let config;
+    try {
+      config = JSON.parse(cfg.valor);
+    } catch(e) {
+      return res.status(400).json({ erro: 'Config Instagram inválido' });
+    }
+
+    const { token, business_id } = config;
+    if (!token || !business_id) {
+      return res.status(400).json({ erro: 'Token ou Business ID faltando' });
+    }
 
   // Incluir nome do sender
-  const nomeSender = req.user?.nome || 'Atendente';
-  const textoComNome = `${nomeSender}: ${texto}`;
+    const nomeSender = req.user?.nome || 'Atendente';
+    const textoComNome = `${nomeSender}: ${texto}`;
 
-  try {
     // Armazenar na base PRIMEIRO (para funcionar mesmo se API falhar)
     const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
     const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
@@ -1008,33 +1004,21 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
     setImmediate(async () => {
       try {
         const url = `https://graph.instagram.com/v20.0/${business_id}/messages`;
-        console.log(`📸 Tentando enviar para Instagram:`, { url, para });
-
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-          body: JSON.stringify({
-            recipient: { id: para },
-            message: { text: textoComNome }
-          })
+          body: JSON.stringify({ recipient: { id: para }, message: { text: textoComNome } })
         });
         const data = await r.json();
-        console.log(`📸 Resposta do Instagram:`, data);
-
         if (data.message_id) {
-          // Atualizar com ID real da API
           db.prepare(`UPDATE instagram_mensagens SET igid=? WHERE igid=?`).run(data.message_id, msgId);
-          console.log(`✅ Mensagem atualizada com ID do Instagram:`, data.message_id);
-        } else {
-          console.warn(`⚠️  Instagram não retornou message_id:`, data.error?.message || 'Desconhecido');
-          // Mensagem já foi salva localmente, tudo bem
         }
       } catch(e) {
-        console.warn(`⚠️  Erro ao enviar para API do Instagram (mensagem já foi salva localmente):`, e.message);
+        // Silencioso — mensagem já foi salva
       }
     });
 
-    // Responder imediatamente (não espera a API do Instagram)
+    // Responder imediatamente COM SUCESSO
     res.json({ ok: true });
 
   } catch(e) {
