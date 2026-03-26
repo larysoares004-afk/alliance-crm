@@ -756,19 +756,41 @@ app.get('/api/instagram/webhook', (req, res) => {
 app.post('/api/instagram/webhook', (req, res) => {
   try {
     const body = req.body;
-    if (body.object !== 'instagram') return res.sendStatus(200);
+    console.log('📸 Webhook Instagram recebido:', JSON.stringify(body).substring(0, 500)); // Log tudo que chega
+
+    if (body.object !== 'instagram') {
+      console.warn(`⚠️  Body.object é '${body.object}', esperava 'instagram'`);
+      return res.sendStatus(200);
+    }
+
     const entry = body.entry?.[0];
+    if (!entry) {
+      console.warn('⚠️  Nenhum entry encontrado no body');
+      return res.sendStatus(200);
+    }
+
     const messaging = entry?.messaging || [];
+    console.log(`📸 Encontrados ${messaging.length} eventos de mensagem`);
 
-    messaging.forEach(msg => {
-      if (!msg.message) return; // Ignora eventos que não são mensagens
+    messaging.forEach((msg, idx) => {
+      console.log(`  [${idx}] Processando evento:`, JSON.stringify(msg).substring(0, 300));
 
-      const de       = msg.sender.id;  // Instagram user ID
-      const igid     = msg.message.mid; // Message ID
+      if (!msg.message) {
+        console.log(`  [${idx}] Sem campo 'message', ignorando`);
+        return;
+      }
+
+      const de       = msg.sender?.id;  // Instagram user ID
+      const igid     = msg.message?.mid; // Message ID
       const tipo     = 'text';
-      const texto    = msg.message.text || '[Mensagem]';
-      const nome     = msg.sender.name || `Usuario ${de}`;
-      const username = msg.sender.username || de;
+      const texto    = msg.message?.text || '[Mensagem]';
+      const nome     = msg.sender?.name || `Usuario ${de}`;
+      const username = msg.sender?.username || de;
+
+      if (!de || !igid) {
+        console.warn(`  [${idx}] Dados incompletos: de=${de}, igid=${igid}`);
+        return;
+      }
 
       // Timestamp
       const tsMeta   = msg.timestamp ? parseInt(msg.timestamp) : Math.floor(Date.now()/1000);
@@ -780,10 +802,10 @@ app.post('/api/instagram/webhook', (req, res) => {
       try {
         db.prepare(`INSERT OR IGNORE INTO instagram_mensagens (igid, de, nome, username, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,?,'recebida',?)`).run(igid, de, nome, username, texto, tipo, criadoEm);
-        console.log(`📸 Instagram recebido de ${nome} (@${username}): ${texto}`);
-      } catch(e) { console.error('Erro ao salvar msg ig:', e.message); }
+        console.log(`  ✅ [${idx}] Mensagem salva: de=${de}, igid=${igid}, texto="${texto}"`);
+      } catch(e) { console.error(`  ❌ [${idx}] Erro ao salvar:`, e.message); }
     });
-  } catch(e) { console.error('Erro webhook instagram:', e.message); }
+  } catch(e) { console.error('❌ Erro webhook instagram:', e.message); }
   res.sendStatus(200);
 });
 
