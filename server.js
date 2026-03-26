@@ -958,15 +958,33 @@ app.get('/api/instagram/mensagens/:de', auth, (req, res) => {
 // Enviar mensagem Instagram (requer token configurado)
 app.post('/api/instagram/enviar', auth, async (req, res) => {
   const { para, texto } = req.body;
-  if (!para || !texto) return res.status(400).json({ erro: 'Para e texto obrigatórios' });
+  console.log(`📸 /api/instagram/enviar: para=${para}, texto=${texto?.substring(0,50)}`);
+
+  if (!para || !texto) {
+    console.error(`📸 Validação falhou: para=${para}, texto=${texto}`);
+    return res.status(400).json({ erro: 'Para e texto obrigatórios' });
+  }
 
   // Buscar token Instagram do config
   const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
-  if (!cfg) return res.status(400).json({ erro: 'Instagram não configurado' });
+  if (!cfg) {
+    console.error(`📸 Config Instagram não encontrado`);
+    return res.status(400).json({ erro: 'Instagram não configurado' });
+  }
 
-  const config = JSON.parse(cfg.valor);
+  let config;
+  try {
+    config = JSON.parse(cfg.valor);
+  } catch(e) {
+    console.error(`📸 Erro ao parsear config Instagram:`, e.message);
+    return res.status(400).json({ erro: 'Config Instagram inválido' });
+  }
+
   const { token, business_id } = config;
-  if (!token || !business_id) return res.status(400).json({ erro: 'Token ou Business ID faltando' });
+  if (!token || !business_id) {
+    console.error(`📸 Token ou Business ID faltando:`, { token: !!token, business_id });
+    return res.status(400).json({ erro: 'Token ou Business ID faltando' });
+  }
 
   // Incluir nome do sender
   const nomeSender = req.user?.nome || 'Atendente';
@@ -974,7 +992,10 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
 
   try {
     // Enviar via Graph API Instagram
-    const r = await fetch(`https://graph.instagram.com/v20.0/${business_id}/messages`, {
+    const url = `https://graph.instagram.com/v20.0/${business_id}/messages`;
+    console.log(`📸 Enviando para Instagram:`, { url, para, token: token.substring(0, 10) + '...' });
+
+    const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify({
@@ -983,6 +1004,7 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
       })
     });
     const data = await r.json();
+    console.log(`📸 Resposta do Instagram:`, data);
 
     if (data.message_id) {
       // Armazenar na base
@@ -995,11 +1017,17 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
                   VALUES (?,?,?,?,'text','enviada',?)`).run(
         data.message_id, para, nomeSender, texto, criadoEm
       );
+      console.log(`✅ Mensagem Instagram salva:`, data.message_id);
       res.json({ ok: true });
     } else {
-      res.status(400).json({ erro: data.error?.message || 'Erro ao enviar' });
+      const erro = data.error?.message || 'Erro ao enviar';
+      console.error(`❌ Erro na resposta do Instagram:`, data.error);
+      res.status(400).json({ erro });
     }
-  } catch(e) { res.status(500).json({ erro: e.message }); }
+  } catch(e) {
+    console.error(`❌ Erro ao enviar mensagem Instagram:`, e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // Transferir conversa Instagram
