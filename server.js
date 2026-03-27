@@ -296,9 +296,24 @@ const apiLimiter = rateLimit({
   message: { error: 'Rate limit excedido.' },
 });
 
+// Rate limit específico para o endpoint da IA (mais restritivo)
+const iaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: { error: 'Rate limit da IA excedido.' },
+});
+
 app.use('/api/', apiLimiter);
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
+// ── Fetch com timeout (10s) para evitar que chamadas externas travem o servidor ──
+function fetchComTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 function auth(req, res, next) {
   const token = req.cookies?.crm_token || req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
@@ -451,7 +466,7 @@ async function enviarWhatsAppAutoLead(nome, telefone, unidade) {
       `Qualquer dúvida, estamos aqui! 😊`;
     const texto = msgTemplate.replace('{nome}', nome).replace('{unidade}', unidade);
     const url = `${cfg.evolUrl.replace(/\/$/, '')}/message/sendText/${cfg.evolInstance}`;
-    await fetch(url, {
+    await fetchComTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': cfg.evolKey },
       body: JSON.stringify({ number: num, text: texto }),
@@ -727,7 +742,6 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       try {
         db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,'recebida',?)`).run(wamid, de, nome, texto, tipo, criadoEm);
-        console.log(`📩 WPP recebido de ${nome} (${de}): ${texto}`);
         // Disparar para N8N automaticamente
         setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
       } catch(e) { console.error('Erro ao salvar msg wpp:', e.message); }
@@ -758,27 +772,19 @@ app.get('/api/instagram/webhook', (req, res) => {
 app.post('/api/instagram/webhook', (req, res) => {
   try {
     const body = req.body;
-    console.log('📸 Webhook Instagram recebido:', JSON.stringify(body).substring(0, 500)); // Log tudo que chega
-
     if (body.object !== 'instagram') {
-      console.warn(`⚠️  Body.object é '${body.object}', esperava 'instagram'`);
       return res.sendStatus(200);
     }
 
     const entry = body.entry?.[0];
     if (!entry) {
-      console.warn('⚠️  Nenhum entry encontrado no body');
       return res.sendStatus(200);
     }
 
     const messaging = entry?.messaging || [];
-    console.log(`📸 Encontrados ${messaging.length} eventos de mensagem`);
 
     messaging.forEach((msg, idx) => {
-      console.log(`  [${idx}] Processando evento:`, JSON.stringify(msg).substring(0, 300));
-
       if (!msg.message) {
-        console.log(`  [${idx}] Sem campo 'message', ignorando`);
         return;
       }
 
@@ -791,7 +797,6 @@ app.post('/api/instagram/webhook', (req, res) => {
       const nome     = msg.sender?.name || (username ? `@${username}` : `Cliente Instagram`);
 
       if (!de || !igid) {
-        console.warn(`  [${idx}] Dados incompletos: de=${de}, igid=${igid}`);
         return;
       }
 
@@ -806,7 +811,6 @@ app.post('/api/instagram/webhook', (req, res) => {
       try {
         db.prepare(`INSERT OR IGNORE INTO instagram_mensagens (igid, de, nome, username, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,?,'recebida',?)`).run(igid, de, nome, username, texto, tipo, criadoEm);
-        console.log(`  ✅ [${idx}] Mensagem salva: de=${de}, igid=${igid}, texto="${texto}"`);
 
         // Disparar para N8N automaticamente (assíncrono, não bloqueia)
         setImmediate(() => dispararParaN8N('instagram', de, nome, texto));
@@ -822,9 +826,8 @@ app.post('/api/instagram/webhook', (req, res) => {
             // Buscar perfil do remetente via API de conversas
             const businessId = igCfg.business_id || '17841448115950083';
             const convUrl = `https://graph.instagram.com/v20.0/${businessId}/conversations?user_id=${de}&fields=participants&access_token=${igCfg.token}`;
-            const rConv = await fetch(convUrl);
+            const rConv = await fetchComTimeout(convUrl);
             const convData = await rConv.json();
-            console.log(`📸 Conversas Instagram de ${de}:`, JSON.stringify(convData).substring(0, 300));
 
             // Extrair nome/username dos participantes
             let nomeReal = nome, usernameReal = username, foto = null;
@@ -834,18 +837,16 @@ app.post('/api/instagram/webhook', (req, res) => {
               nomeReal = remetente.name || remetente.username || nome;
               usernameReal = remetente.username || username;
               foto = remetente.profile_pic_uri || remetente.pic || null;
-              console.log(`  ✅ Perfil encontrado: ${nomeReal} (@${usernameReal})`);
             }
 
             // Se ainda for "Usuario X", tentar buscar direto pelo ID
             if (!remetente || nomeReal.startsWith('Usuario ')) {
-              const rDirect = await fetch(`https://graph.instagram.com/v20.0/${de}?fields=name,username,profile_picture_url&access_token=${igCfg.token}`);
+              const rDirect = await fetchComTimeout(`https://graph.instagram.com/v20.0/${de}?fields=name,username,profile_picture_url&access_token=${igCfg.token}`);
               const pDirect = await rDirect.json();
               if (pDirect.name || pDirect.username) {
                 nomeReal = pDirect.name || pDirect.username || nomeReal;
                 usernameReal = pDirect.username || usernameReal;
                 foto = pDirect.profile_picture_url || foto;
-                console.log(`  ✅ Perfil direto: ${nomeReal} (@${usernameReal})`);
               }
             }
 
@@ -857,7 +858,7 @@ app.post('/api/instagram/webhook', (req, res) => {
               db.prepare(`UPDATE instagram_mensagens SET foto_url=? WHERE de=?`).run(foto, de);
             }
           } catch(e) {
-            console.warn(`  ⚠️  Não foi possível buscar perfil Instagram:`, e.message);
+            // Silencioso — não bloqueia o processamento principal
           }
         });
       } catch(e) { console.error(`  ❌ [${idx}] Erro ao salvar:`, e.message); }
@@ -915,7 +916,7 @@ app.post('/api/whatsapp/enviar', auth, async (req, res) => {
   const textoComNome = `${nomeSender}: ${texto}`;
 
   try {
-    const r = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+    const r = await fetchComTimeout(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify({
@@ -1049,25 +1050,26 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
                 VALUES (?,?,?,?,'text','enviada',?)`).run(
       msgId, para, nomeSender, texto, criadoEm
     );
-    console.log(`✅ Mensagem salva localmente:`, msgId);
 
     // Tentar enviar via Graph API Instagram (assincrono, não bloqueia)
-    setImmediate(async () => {
-      try {
-        const url = `https://graph.instagram.com/v20.0/${business_id}/messages`;
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-          body: JSON.stringify({ recipient: { id: para }, message: { text: textoComNome } })
-        });
-        const data = await r.json();
-        if (data.message_id) {
-          db.prepare(`UPDATE instagram_mensagens SET igid=? WHERE igid=?`).run(data.message_id, msgId);
+    if (token && business_id) {
+      setImmediate(async () => {
+        try {
+          const url = `https://graph.instagram.com/v20.0/${business_id}/messages`;
+          const r = await fetchComTimeout(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ recipient: { id: para }, message: { text: textoComNome } })
+          });
+          const data = await r.json();
+          if (data.message_id) {
+            db.prepare(`UPDATE instagram_mensagens SET igid=? WHERE igid=?`).run(data.message_id, msgId);
+          }
+        } catch(e) {
+          // Silencioso — mensagem já foi salva localmente
         }
-      } catch(e) {
-        // Silencioso — mensagem já foi salva
-      }
-    });
+      });
+    }
 
     // Responder imediatamente COM SUCESSO
     res.json({ ok: true });
@@ -1110,23 +1112,20 @@ async function dispararParaN8N(canal, de, nome, texto) {
     const tokenIa = cfgToken ? JSON.parse(cfgToken.valor) : 'alliance_ia_2024';
 
     const payload = { canal, de, nome, texto, timestamp: new Date().toISOString(), token_ia: tokenIa };
-    fetch(n8n.webhook_url, {
+    fetchComTimeout(n8n.webhook_url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    }).then(r => console.log(`🤖 N8N disparado para ${de}: status ${r.status}`))
-      .catch(e => console.warn(`⚠️ Falha ao disparar N8N:`, e.message));
+    }).catch(e => console.warn(`⚠️ Falha ao disparar N8N:`, e.message));
   } catch(e) {
     console.warn('⚠️ Erro ao disparar N8N:', e.message);
   }
 }
 
 // Endpoint que o N8N chama para enviar resposta automática
-
-// Endpoint que o N8N chama para enviar resposta automática
 // POST /api/ia/resposta
 // Body: { canal: 'whatsapp'|'instagram', para: '5571...', texto: '...' }
-app.post('/api/ia/resposta', async (req, res) => {
+app.post('/api/ia/resposta', iaLimiter, async (req, res) => {
   try {
     const { canal, para, texto, token_ia } = req.body;
 
@@ -1138,6 +1137,11 @@ app.post('/api/ia/resposta', async (req, res) => {
     }
 
     if (!para || !texto) return res.status(400).json({ erro: 'para e texto obrigatórios' });
+
+    // Validar campo 'para' — aceita apenas dígitos (telefone) ou ID numérico Instagram
+    if (!/^\d{7,20}$/.test(String(para).replace(/\D/g, ''))) {
+      return res.status(400).json({ erro: 'Campo para inválido' });
+    }
 
     if (canal === 'instagram') {
       // Enviar via Instagram
@@ -1154,13 +1158,12 @@ app.post('/api/ia/resposta', async (req, res) => {
         .run(msgId, para, 'IA Alliance', texto, criadoEm);
 
       // Enviar via API Instagram
-      const r = await fetch(`https://graph.instagram.com/v20.0/${business_id}/messages`, {
+      const r = await fetchComTimeout(`https://graph.instagram.com/v20.0/${business_id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify({ recipient: { id: para }, message: { text: texto } })
       });
       const data = await r.json();
-      console.log('🤖 IA Instagram enviou:', data);
       res.json({ ok: true, data });
 
     } else {
@@ -1176,14 +1179,13 @@ app.post('/api/ia/resposta', async (req, res) => {
       db.prepare(`INSERT INTO wpp_mensagens (wamid,de,nome,texto,tipo,direcao,criado_em) VALUES (?,?,?,?,'text','enviada',?)`)
         .run(wamid, para, 'IA Alliance', texto, criadoEm);
 
-      // Enviar via API WhatsApp
-      const r = await fetch(`https://graph.facebook.com/v20.0/${conta.phone_number_id}/messages`, {
+      // Enviar via API WhatsApp (phone_id é o campo correto no schema wpp_contas)
+      const r = await fetchComTimeout(`https://graph.facebook.com/v20.0/${conta.phone_id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + conta.token },
         body: JSON.stringify({ messaging_product: 'whatsapp', to: para, type: 'text', text: { body: texto } })
       });
       const data = await r.json();
-      console.log('🤖 IA WhatsApp enviou:', data);
       res.json({ ok: true, data });
     }
   } catch(e) {
@@ -1250,7 +1252,7 @@ app.post('/api/whatsapp/sincronizar-historico', auth, requireRole('admin','gesto
     // Tenta buscar via WABA (Business Account)
     if (bizId) {
       const url = `https://graph.facebook.com/v20.0/${bizId}/conversations?fields=id,messages{from,timestamp,type,text}&limit=50`;
-      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+      const r = await fetchComTimeout(url, { headers: { Authorization: 'Bearer ' + token } });
       const data = await r.json();
       if (!data.error) {
         for (const conv of (data.data||[])) {
@@ -1278,7 +1280,7 @@ app.post('/api/whatsapp/corrigir-timestamps', auth, requireRole('admin'), (req, 
     // Corrige subtraindo 3 horas das mensagens "enviadas" com criado_em >= 18:00
     const rows = db.prepare(`
       SELECT id, criado_em FROM wpp_mensagens
-      WHERE direcao='enviada' AND criado_em LIKE '%18:%' OR criado_em LIKE '%19:%' OR criado_em LIKE '%20:%' OR criado_em LIKE '%21:%' OR criado_em LIKE '%22:%' OR criado_em LIKE '%23:%'
+      WHERE direcao='enviada' AND (criado_em LIKE '%18:%' OR criado_em LIKE '%19:%' OR criado_em LIKE '%20:%' OR criado_em LIKE '%21:%' OR criado_em LIKE '%22:%' OR criado_em LIKE '%23:%')
     `).all();
 
     let fixed = 0;
@@ -1334,7 +1336,7 @@ app.get(['/lp', '/lp.html'], async (req, res) => {
   if (fs.existsSync(lpPath)) return res.sendFile(lpPath);
   try {
     if (!_lpCache) {
-      const r = await fetch('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/lp.html');
+      const r = await fetchComTimeout('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/lp.html');
       _lpCache = await r.text();
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -1351,7 +1353,7 @@ app.get(['/instalar', '/instalar.html', '/baixar', '/app', '/download'], async (
   if (fs.existsSync(p)) return res.sendFile(p);
   try {
     if (!_instalarCache) {
-      const r = await fetch('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/instalar.html');
+      const r = await fetchComTimeout('https://raw.githubusercontent.com/larysoares004-afk/alliance-crm/main/public/instalar.html');
       _instalarCache = await r.text();
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

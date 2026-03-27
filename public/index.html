@@ -1980,21 +1980,26 @@ function iniciarSistema(){
     console.error('iniciarSistema error:', e);
     try { goTo('dashboard'); } catch(e2) {}
   }
-  // Polling a cada 30s — force re-check backend e sincroniza dados reais
-  setInterval(function(){
-    _backendStatus = null; // força nova verificação de conectividade
-    backendDisponivel().then(function(online){
-      if(!online) return;
-      if(!_getAuthToken()) return; // sem token, não sincroniza
-      sincronizarDados().catch(function(){});
-    });
-  }, 30000);
+  // Polling a cada 30s — guard para evitar múltiplos intervals se iniciarSistema for chamada mais de uma vez
+  if (!window._syncIntervalId) {
+    window._syncIntervalId = setInterval(function(){
+      _backendStatus = null; // força nova verificação de conectividade
+      backendDisponivel().then(function(online){
+        if(!online) return;
+        if(!_getAuthToken()) return; // sem token, não sincroniza
+        sincronizarDados().catch(function(){});
+      });
+    }, 30000);
+  }
 
-  // Polling de mensagens WhatsApp Meta a cada 15 segundos
-  setInterval(function(){
-    if(!_getAuthToken()) return;
-    carregarConversasMeta().catch(function(){});
-  }, 15000);
+  // Polling de mensagens WhatsApp Meta e Instagram a cada 15 segundos
+  if (!window._wppMetaIntervalId) {
+    window._wppMetaIntervalId = setInterval(function(){
+      if(!_getAuthToken()) return;
+      carregarConversasMeta().catch(function(){});
+      carregarConversasInstagram().catch(function(){});
+    }, 15000);
+  }
 }
 
 // Stub para compatibilidade (não é mais necessário)
@@ -2060,12 +2065,16 @@ function loadState() {
     const saved = localStorage.getItem(LS_KEY);
     if (!saved) return JSON.parse(JSON.stringify(DEFAULT_STATE));
     const parsed = JSON.parse(saved);
-    // merge com defaults para garantir campos novos
+    // merge com defaults para garantir campos novos (nunca substitui por null/undefined)
     return {
       ...JSON.parse(JSON.stringify(DEFAULT_STATE)),
       ...parsed,
       notifications: parsed.notifications || [],
       chatMsgs: parsed.chatMsgs || {},
+      metaConversas: parsed.metaConversas || [],
+      instagramConversas: parsed.instagramConversas || [],
+      metaMensagens: parsed.metaMensagens || {},
+      instagramMensagens: parsed.instagramMensagens || {},
     };
   } catch(e) {
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -2085,10 +2094,10 @@ function saveState() {
       wppAccounts: state.wppAccounts,
       notifications: state.notifications,
       chatMsgs: state.chatMsgs,
-      metaConversas: state.metaConversas,
-      instagramConversas: state.instagramConversas,
-      metaMensagens: state.metaMensagens,
-      instagramMensagens: state.instagramMensagens,
+      metaConversas: state.metaConversas || [],
+      instagramConversas: state.instagramConversas || [],
+      metaMensagens: state.metaMensagens || {},
+      instagramMensagens: state.instagramMensagens || {},
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch(e) {}
@@ -3570,7 +3579,11 @@ function escHtml(str) {
 // ══════════════════════════ ATENDIMENTOS ══════════════════════════════════════
 // Chats por conta WhatsApp conectada
 // Carrega conversas da Meta Cloud API do backend
+// Guard para evitar chamadas sobrepostas se a API demorar mais que o intervalo de polling
+let _metaCarregando = false;
 async function carregarConversasMeta() {
+  if (_metaCarregando) return;
+  _metaCarregando = true;
   try {
     const dados = await api('GET', '/api/whatsapp/conversas');
     S(s => s.metaConversas = dados || []);
@@ -3578,24 +3591,32 @@ async function carregarConversasMeta() {
     // Carregar e mostrar transferências
     carregarTransferenciasRecebidas();
   } catch(e) {
-    console.error('Erro ao carregar conversas Meta:', e);
+    // Silencioso no polling — evita spam no console
+  } finally {
+    _metaCarregando = false;
   }
 }
 
 // Carregar conversas Instagram
+// Guard para evitar chamadas sobrepostas se a API demorar mais que o intervalo de polling
+let _instagramCarregando = false;
 async function carregarConversasInstagram() {
+  if (_instagramCarregando) return;
+  _instagramCarregando = true;
   try {
     const dados = await api('GET', '/api/instagram/conversas');
     // Melhorar nomes que são apenas IDs
     const melhorados = (dados || []).map(c => ({
       ...c,
-      nome: c.nome && !c.nome.startsWith('Usuario') ? c.nome : `@${c.username || c.de.substring(0, 8)}`,
-      username: c.username || c.de.substring(0, 8)
+      nome: c.nome && !c.nome.startsWith('Usuario') ? c.nome : `@${c.username || (c.de||'').substring(0, 8)}`,
+      username: c.username || (c.de||'').substring(0, 8)
     }));
     S(s => s.instagramConversas = melhorados);
     if (uiState.currentTab === 'atendimentos') renderAttList();
   } catch(e) {
-    console.error('📸 Erro ao carregar conversas Instagram:', e);
+    // Silencioso no polling — evita spam no console
+  } finally {
+    _instagramCarregando = false;
   }
 }
 
@@ -3788,12 +3809,11 @@ function getAttChats(canal) {
   const chats = [];
   const seen = new Set();
 
-  console.log(`getAttChats('${canal}'):`, `metaConversas=${(state.metaConversas||[]).length}`, `instagramConversas=${(state.instagramConversas||[]).length}`);
+  // debug removido em produção
 
   if (canal === 'instagram') {
     // Instagram via Meta Cloud API
     const instagramChats = (state.instagramConversas || []);
-    console.log(`📸 Processando ${instagramChats.length} conversas Instagram...`);
 
     instagramChats.forEach((c, idx) => {
       const chatId = 'instagram-' + c.de;
@@ -3832,7 +3852,6 @@ function getAttChats(canal) {
       });
     });
 
-    console.log(`📸 Total de chats Instagram após processamento: ${chats.length}`);
     return chats;
   }
 
@@ -4694,7 +4713,13 @@ async function salvarN8NToken(){
     const st=document.getElementById('n8nStatus');
     if(st){st.innerHTML='✅ Token salvo! A IA está pronta para receber mensagens.';st.style.background='#f0fdf4';st.style.color='#166534';st.style.borderColor='#bbf7d0';}
     toast('Token da IA salvo!','success');
-  }catch(e){toast('Erro ao salvar: '+e.message,'error');}
+  }catch(e){
+    if(e.message&&(e.message.includes('401')||e.message.includes('Sessão'))){
+      toast('Sessão expirada — faça login novamente','error');
+    } else {
+      toast('Erro ao salvar: '+e.message,'error');
+    }
+  }
 }
 
 async function salvarN8NWebhook(){
