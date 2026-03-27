@@ -1992,13 +1992,30 @@ function iniciarSistema(){
     }, 30000);
   }
 
-  // Polling de mensagens WhatsApp Meta e Instagram a cada 15 segundos
+  // Polling de mensagens WhatsApp Meta e Instagram a cada 8 segundos
   if (!window._wppMetaIntervalId) {
     window._wppMetaIntervalId = setInterval(function(){
       if(!_getAuthToken()) return;
+      // Atualiza lista de conversas
       carregarConversasMeta().catch(function(){});
       carregarConversasInstagram().catch(function(){});
-    }, 15000);
+      // Se chat WhatsApp aberto, recarrega mensagens imediatamente
+      if (uiState.metaChatDe) {
+        api('GET', '/api/whatsapp/mensagens/' + uiState.metaChatDe).then(function(msgs){
+          if (!msgs || !msgs.length) return;
+          S(function(s){ s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[uiState.metaChatDe] = msgs; });
+          renderMsgsMeta(uiState.metaChatDe);
+        }).catch(function(){});
+      }
+      // Se chat Instagram aberto, recarrega mensagens imediatamente
+      if (uiState.instagramChatDe) {
+        api('GET', '/api/instagram/mensagens/' + uiState.instagramChatDe).then(function(msgs){
+          if (!msgs || !msgs.length) return;
+          S(function(s){ s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[uiState.instagramChatDe] = msgs; });
+          renderMsgsMeta(uiState.instagramChatDe, 'instagram');
+        }).catch(function(){});
+      }
+    }, 8000);
   }
 }
 
