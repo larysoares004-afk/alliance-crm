@@ -2,7 +2,7 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y python3 make g++ git && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # ARG antes do COPY — invalida cache do npm install quando muda
-ARG CACHEBUST=20260327b-ia-leads-integration
+ARG CACHEBUST=20260327g-webhook-debug-logging
 RUN echo "Cache bust: $CACHEBUST"
 COPY package*.json ./
 RUN npm install --production

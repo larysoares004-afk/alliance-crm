@@ -722,13 +722,45 @@ app.get('/api/whatsapp/webhook', (req, res) => {
 app.post('/api/whatsapp/webhook', (req, res) => {
   try {
     const body = req.body;
-    if (body.object !== 'whatsapp_business_account') return res.sendStatus(200);
-    const entry = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    if (!value?.messages) return res.sendStatus(200);
+    console.log('📨 [WEBHOOK] POST recebido:', JSON.stringify(body).substring(0, 500));
 
-    value.messages.forEach(msg => {
+    if (body.object !== 'whatsapp_business_account') {
+      console.warn(`⚠️  [WEBHOOK] object é '${body.object}', não é 'whatsapp_business_account'`);
+      return res.sendStatus(200);
+    }
+
+    const entry = body.entry?.[0];
+    if (!entry) {
+      console.warn('⚠️  [WEBHOOK] Sem entry no body');
+      return res.sendStatus(200);
+    }
+
+    const changes = entry?.changes?.[0];
+    if (!changes) {
+      console.warn('⚠️  [WEBHOOK] Sem changes em entry');
+      return res.sendStatus(200);
+    }
+
+    const value = changes?.value;
+    if (!value) {
+      console.warn('⚠️  [WEBHOOK] Sem value em changes');
+      return res.sendStatus(200);
+    }
+
+    if (!value?.messages) {
+      console.log('ℹ️  [WEBHOOK] Não há messages (pode ser status update, read receipt, etc)');
+      return res.sendStatus(200);
+    }
+
+    console.log(`✅ [WEBHOOK] ${value.messages.length} mensagem(ns) para processar`);
+
+    if (value.messages.length === 0) {
+      console.log('ℹ️  [WEBHOOK] Array de messages vazio');
+      return res.sendStatus(200);
+    }
+
+    value.messages.forEach((msg, idx) => {
+      console.log(`\n 📨 [MSG ${idx + 1}/${value.messages.length}]`);
       const de    = msg.from;
       const wamid = msg.id;
       const tipo  = msg.type || 'text';
@@ -751,11 +783,20 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
 
       try {
-        db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
+        console.log(`   [${msg.id}] Processando: de=${de}, nome=${nome}, tipo=${tipo}, texto="${texto}"`);
+        const result = db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,'recebida',?)`).run(wamid, de, nome, texto, tipo, criadoEm);
-        // Disparar para N8N automaticamente
-        setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
-      } catch(e) { console.error('Erro ao salvar msg wpp:', e.message); }
+        if (result.changes > 0) {
+          console.log(`   ✅ SALVA: ${de} → "${texto}"`);
+          // Disparar para N8N automaticamente
+          setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
+        } else {
+          console.warn(`   ⚠️  IGNORADA (já existe): wamid=${wamid}`);
+        }
+      } catch(e) {
+        console.error(`   ❌ ERRO ao salvar: ${e.message}`);
+        console.error(`      Dados: wamid=${wamid}, de=${de}, texto="${texto}", tipo=${tipo}`);
+      }
     });
   } catch(e) { console.error('Erro webhook wpp:', e.message); }
   res.sendStatus(200);
