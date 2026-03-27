@@ -1153,7 +1153,7 @@ select.inp{cursor:pointer}
 <!-- ═══════════════════════ ATENDIMENTOS ════════════════════════ -->
 
 <div class="view" id="view-atendimentos">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
     <div>
       <div class="ptitle">Atendimentos</div>
       <div class="psub">WhatsApp e Instagram Direct</div>
@@ -1174,6 +1174,8 @@ select.inp{cursor:pointer}
     </div>
     </div>
   </div>
+  <!-- Mini stats bar — leads pipeline resumido -->
+  <div id="attMiniStats" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
   <div class="att-layout">
     <div class="att-sidebar">
       <div class="att-hdr">
@@ -1980,7 +1982,7 @@ function iniciarSistema(){
     console.error('iniciarSistema error:', e);
     try { goTo('dashboard'); } catch(e2) {}
   }
-  // Polling a cada 30s — guard para evitar múltiplos intervals se iniciarSistema for chamada mais de uma vez
+  // Polling a cada 15s — guard para evitar múltiplos intervals se iniciarSistema for chamada mais de uma vez
   if (!window._syncIntervalId) {
     window._syncIntervalId = setInterval(function(){
       _backendStatus = null; // força nova verificação de conectividade
@@ -1989,7 +1991,7 @@ function iniciarSistema(){
         if(!_getAuthToken()) return; // sem token, não sincroniza
         sincronizarDados().catch(function(){});
       });
-    }, 30000);
+    }, 15000);
   }
 
   // Polling de mensagens WhatsApp Meta e Instagram a cada 8 segundos
@@ -3602,11 +3604,27 @@ async function carregarConversasMeta() {
   if (_metaCarregando) return;
   _metaCarregando = true;
   try {
+    const prevCount = (state.metaConversas || []).length;
     const dados = await api('GET', '/api/whatsapp/conversas');
     S(s => s.metaConversas = dados || []);
     if (uiState.currentTab === 'atendimentos') renderAttList();
     // Carregar e mostrar transferências
     carregarTransferenciasRecebidas();
+    // Se há novas conversas, atualizar leads no state para refletir no dashboard pipeline
+    if ((dados || []).length > prevCount) {
+      api('GET', '/api/leads').then(leadsRaw => {
+        if (!Array.isArray(leadsRaw)) return;
+        S(s => { s.customers = leadsRaw.map(l => ({
+          id: String(l.id), name: l.nome, phone: l.telefone || '',
+          source: l.origem || 'Manual', status: l.status || 'LEAD',
+          createdAt: l.criado_em || new Date().toISOString(),
+          serviceValue: l.valor || 19.90, os: l.os || String(l.id),
+          reasonForExam: l.motivo || '', needsGlasses: (l.oculos === 'Sim'),
+        })); });
+        if (uiState.currentTab === 'dashboard') renderDashboard();
+        if (uiState.currentTab === 'leads') renderKanban();
+      }).catch(() => {});
+    }
   } catch(e) {
     // Silencioso no polling — evita spam no console
   } finally {
@@ -3621,6 +3639,7 @@ async function carregarConversasInstagram() {
   if (_instagramCarregando) return;
   _instagramCarregando = true;
   try {
+    const prevCount = (state.instagramConversas || []).length;
     const dados = await api('GET', '/api/instagram/conversas');
     // Melhorar nomes que são apenas IDs
     const melhorados = (dados || []).map(c => ({
@@ -3630,6 +3649,21 @@ async function carregarConversasInstagram() {
     }));
     S(s => s.instagramConversas = melhorados);
     if (uiState.currentTab === 'atendimentos') renderAttList();
+    // Se há novas conversas Instagram, atualizar leads no state
+    if ((melhorados || []).length > prevCount) {
+      api('GET', '/api/leads').then(leadsRaw => {
+        if (!Array.isArray(leadsRaw)) return;
+        S(s => { s.customers = leadsRaw.map(l => ({
+          id: String(l.id), name: l.nome, phone: l.telefone || '',
+          source: l.origem || 'Manual', status: l.status || 'LEAD',
+          createdAt: l.criado_em || new Date().toISOString(),
+          serviceValue: l.valor || 19.90, os: l.os || String(l.id),
+          reasonForExam: l.motivo || '', needsGlasses: (l.oculos === 'Sim'),
+        })); });
+        if (uiState.currentTab === 'dashboard') renderDashboard();
+        if (uiState.currentTab === 'leads') renderKanban();
+      }).catch(() => {});
+    }
   } catch(e) {
     // Silencioso no polling — evita spam no console
   } finally {
@@ -3945,6 +3979,29 @@ function renderAttList(){
   const canal = uiState.attCanal || 'whatsapp';
   const q=(document.getElementById('attSearch')||{value:''}).value.toLowerCase();
   let allChats=getAttChats(canal);
+
+  // Mini stats bar — mostra contagem do pipeline de leads
+  const miniStats = document.getElementById('attMiniStats');
+  if (miniStats) {
+    const cs = state.customers || [];
+    const totalLeads = cs.filter(c => c.status === 'LEAD').length;
+    const agendados = cs.filter(c => c.status === 'AGENDADO').length;
+    const convertidos = cs.filter(c => c.status === 'CONVERTEU').length;
+    const followups = cs.filter(c => c.status && c.status.startsWith('FOLLOW')).length;
+    const totalConversas = (state.metaConversas||[]).length + (state.instagramConversas||[]).length;
+    const statItems = [
+      { lbl: '💬 Conversas', val: totalConversas, bg: '#eff6ff', col: '#2563eb' },
+      { lbl: '🆕 Leads', val: totalLeads, bg: '#ede9fe', col: '#7c3aed' },
+      { lbl: '📅 Agendados', val: agendados, bg: '#fef3c7', col: '#d97706' },
+      { lbl: '✅ Convertidos', val: convertidos, bg: '#ecfdf5', col: '#059669' },
+      { lbl: '🔄 Follow-ups', val: followups, bg: '#fff1f2', col: '#e11d48' },
+    ];
+    miniStats.innerHTML = statItems.map(s =>
+      `<div onclick="goTo('dashboard')" style="cursor:pointer;display:flex;align-items:center;gap:6px;background:${s.bg};border-radius:8px;padding:5px 10px;font-size:11px;color:${s.col};font-weight:700;white-space:nowrap">
+        <span>${s.lbl}</span><span style="font-size:14px;font-weight:900">${s.val}</span>
+      </div>`
+    ).join('');
+  }
 
   // TODOS os usuários (admin, gestor, atendente, vendedor) veem TODAS as conversas
   // A transferência é apenas para roteamento/visualização, não para filtro

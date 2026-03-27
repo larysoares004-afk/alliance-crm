@@ -788,6 +788,17 @@ app.post('/api/whatsapp/webhook', (req, res) => {
                     VALUES (?,?,?,?,?,'recebida',?)`).run(wamid, de, nome, texto, tipo, criadoEm);
         if (result.changes > 0) {
           console.log(`   ✅ SALVA: ${de} → "${texto}"`);
+          // Auto-criar lead no CRM se não existir para este número WhatsApp
+          try {
+            const leadExiste = db.prepare("SELECT id FROM leads WHERE telefone=? OR telefone LIKE ?")
+              .get(de, '%' + de.replace(/^55/, '') + '%');
+            if (!leadExiste) {
+              const count = db.prepare('SELECT COUNT(*) as c FROM leads').get().c;
+              db.prepare('INSERT INTO leads (nome,telefone,origem,status,motivo,os) VALUES (?,?,?,?,?,?)')
+                .run(nome || de, de, 'WhatsApp', 'LEAD', 'Mensagem WhatsApp recebida', String(1000 + count + 1));
+              console.log(`   📋 [LEAD AUTO] Criado: ${nome || de} (${de})`);
+            }
+          } catch(eL) { console.warn('Erro ao auto-criar lead WhatsApp:', eL.message); }
           // Disparar para N8N automaticamente
           setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
         } else {
@@ -883,6 +894,20 @@ app.post('/api/instagram/webhook', (req, res) => {
       try {
         db.prepare(`INSERT OR IGNORE INTO instagram_mensagens (igid, de, nome, username, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,?,'recebida',?)`).run(igid, de, nome, username, texto, tipo, criadoEm);
+
+        // Auto-criar lead no CRM se não existir para este usuário Instagram
+        try {
+          const igTel = 'ig:' + de;
+          const leadExiste = db.prepare("SELECT id FROM leads WHERE telefone=?").get(igTel);
+          if (!leadExiste) {
+            const count = db.prepare('SELECT COUNT(*) as c FROM leads').get().c;
+            const nomeParaLead = (nome && !nome.startsWith('Cliente Instagram')) ? nome
+              : (username ? '@' + username : 'Instagram ' + (de || '').substring(0, 8));
+            db.prepare('INSERT INTO leads (nome,telefone,origem,status,motivo,os) VALUES (?,?,?,?,?,?)')
+              .run(nomeParaLead, igTel, 'Instagram', 'LEAD', 'Mensagem Instagram recebida', String(1000 + count + 1));
+            console.log(`  📋 [LEAD AUTO] Criado para Instagram: ${nomeParaLead} (${de})`);
+          }
+        } catch(eL) { console.warn('Erro ao auto-criar lead Instagram:', eL.message); }
 
         // Disparar para N8N automaticamente (assíncrono, não bloqueia)
         setImmediate(() => dispararParaN8N('instagram', de, nome, texto));
