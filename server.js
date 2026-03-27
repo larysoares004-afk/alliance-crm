@@ -728,6 +728,8 @@ app.post('/api/whatsapp/webhook', (req, res) => {
         db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,'recebida',?)`).run(wamid, de, nome, texto, tipo, criadoEm);
         console.log(`📩 WPP recebido de ${nome} (${de}): ${texto}`);
+        // Disparar para N8N automaticamente
+        setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
       } catch(e) { console.error('Erro ao salvar msg wpp:', e.message); }
     });
   } catch(e) { console.error('Erro webhook wpp:', e.message); }
@@ -805,6 +807,9 @@ app.post('/api/instagram/webhook', (req, res) => {
         db.prepare(`INSERT OR IGNORE INTO instagram_mensagens (igid, de, nome, username, texto, tipo, direcao, criado_em)
                     VALUES (?,?,?,?,?,?,'recebida',?)`).run(igid, de, nome, username, texto, tipo, criadoEm);
         console.log(`  ✅ [${idx}] Mensagem salva: de=${de}, igid=${igid}, texto="${texto}"`);
+
+        // Disparar para N8N automaticamente (assíncrono, não bloqueia)
+        setImmediate(() => dispararParaN8N('instagram', de, nome, texto));
 
         // Buscar nome e foto real do usuário Instagram via API (assincrono)
         setImmediate(async () => {
@@ -1074,8 +1079,49 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// INTEGRAÇÃO N8N / IA — Webhook para receber respostas da IA
+// INTEGRAÇÃO N8N / IA
 // ═══════════════════════════════════════════════════════════
+
+// Salvar/buscar config N8N
+app.put('/api/config/n8n', auth, requireRole('admin','gestor'), (req, res) => {
+  const atual = db.prepare("SELECT valor FROM config WHERE chave='n8n_config'").get();
+  const base = atual ? JSON.parse(atual.valor) : {};
+  const novo = { ...base, ...req.body };
+  db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('n8n_config', JSON.stringify(novo));
+  // Também atualiza token da IA separado para compatibilidade
+  if(req.body.token) db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('n8n_token', JSON.stringify(req.body.token));
+  res.json({ ok: true });
+});
+
+app.get('/api/config/n8n', auth, requireRole('admin','gestor'), (req, res) => {
+  const cfg = db.prepare("SELECT valor FROM config WHERE chave='n8n_config'").get();
+  res.json(cfg ? JSON.parse(cfg.valor) : {});
+});
+
+// Função para disparar mensagem para o N8N automaticamente
+async function dispararParaN8N(canal, de, nome, texto) {
+  try {
+    const cfgN8N = db.prepare("SELECT valor FROM config WHERE chave='n8n_config'").get();
+    if (!cfgN8N) return;
+    const n8n = JSON.parse(cfgN8N.valor);
+    if (!n8n.webhook_url) return;
+
+    const cfgToken = db.prepare("SELECT valor FROM config WHERE chave='n8n_token'").get();
+    const tokenIa = cfgToken ? JSON.parse(cfgToken.valor) : 'alliance_ia_2024';
+
+    const payload = { canal, de, nome, texto, timestamp: new Date().toISOString(), token_ia: tokenIa };
+    fetch(n8n.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(r => console.log(`🤖 N8N disparado para ${de}: status ${r.status}`))
+      .catch(e => console.warn(`⚠️ Falha ao disparar N8N:`, e.message));
+  } catch(e) {
+    console.warn('⚠️ Erro ao disparar N8N:', e.message);
+  }
+}
+
+// Endpoint que o N8N chama para enviar resposta automática
 
 // Endpoint que o N8N chama para enviar resposta automática
 // POST /api/ia/resposta

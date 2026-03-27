@@ -1275,6 +1275,7 @@ select.inp{cursor:pointer}
           <button class="cfg-tab" onclick="setCfgTab('notif',this)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notificações</button>
           <button class="cfg-tab" onclick="setCfgTab('seg',this)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Segurança</button>
           <button class="cfg-tab" id="cfgTabUsuarios" onclick="setCfgTab('usuarios',this)" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Usuários</button>
+          <button class="cfg-tab" id="cfgTabN8N" onclick="setCfgTab('n8n',this)" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>IA / N8N</button>
         </div>
       </div>
       <div class="card" style="flex:1;min-width:0" id="cfgContent"></div>
@@ -4472,6 +4473,8 @@ function setCfgTab(t,btn){
 function mostrarAbaUsuarios(){
   const tabEl=document.getElementById('cfgTabUsuarios');
   if(tabEl&&currentUser&&(currentUser.role==='admin'||currentUser.role==='gestor')) tabEl.style.display='';
+  const n8nEl=document.getElementById('cfgTabN8N');
+  if(n8nEl&&currentUser&&(currentUser.role==='admin'||currentUser.role==='gestor')) n8nEl.style.display='';
 }
 
 function renderConfig(){
@@ -4553,6 +4556,114 @@ function renderConfig(){
     if(!currentUser||currentUser.role!=='admin'){cfg.innerHTML='<div style="padding:20px;color:var(--z400)">Acesso negado.</div>';return;}
     cfg.innerHTML='<div style="padding:32px;text-align:center;color:var(--z400)">Carregando...</div>';
     carregarEMostrarUsuarios(cfg);
+  } else if(uiState.cfgTab==='n8n'){
+    if(!currentUser||(currentUser.role!=='admin'&&currentUser.role!=='gestor')){cfg.innerHTML='<div style="padding:20px;color:var(--z400)">Acesso negado.</div>';return;}
+    cfg.innerHTML=`
+      <div class="card-hdr"><div class="card-title">🤖 Integração IA / N8N</div><div class="card-sub">Conecte uma inteligência artificial para responder clientes automaticamente</div></div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:20px">
+
+        <!-- STATUS -->
+        <div id="n8nStatus" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;font-size:13px;color:#166534">
+          ⚙️ Carregando configuração...
+        </div>
+
+        <!-- TOKEN DE SEGURANÇA -->
+        <div>
+          <label class="lbl">🔑 Token de Segurança da IA</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="n8nToken" class="inp" placeholder="Ex: alliance_ia_2024" style="flex:1">
+            <button class="btn btn-primary" onclick="salvarN8NToken()">💾 Salvar</button>
+          </div>
+          <div style="font-size:11px;color:var(--z400);margin-top:4px">Este token é usado para autenticar as respostas da IA. Passe este token para o pessoal do N8N.</div>
+        </div>
+
+        <!-- URL DO N8N -->
+        <div>
+          <label class="lbl">🔗 URL do Webhook N8N (opcional)</label>
+          <div style="display:flex;gap:8px">
+            <input type="url" id="n8nWebhookUrl" class="inp" placeholder="https://seu-n8n.com/webhook/alliance" style="flex:1">
+            <button class="btn btn-secondary" onclick="testarN8NWebhook()">🧪 Testar</button>
+            <button class="btn btn-primary" onclick="salvarN8NWebhook()">💾 Salvar</button>
+          </div>
+          <div style="font-size:11px;color:var(--z400);margin-top:4px">Se preenchido, todas as mensagens recebidas serão encaminhadas para este URL automaticamente.</div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--z100)">
+
+        <!-- GUIA PARA O PESSOAL DO N8N -->
+        <div style="background:#f8fafc;border-radius:12px;padding:16px;font-size:13px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:12px">📋 O que passar para o pessoal do N8N:</div>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid var(--z100)">
+              <div style="font-weight:600;color:var(--z700);margin-bottom:6px">1️⃣ Como o N8N recebe as mensagens (ENTRADA)</div>
+              <div style="font-size:12px;color:var(--z500);margin-bottom:6px">Você vai configurar um nó Webhook no N8N com estas URLs:</div>
+              <div style="background:#1e293b;color:#e2e8f0;border-radius:6px;padding:8px;font-family:monospace;font-size:11px;word-break:break-all">
+                WhatsApp: POST https://alliance-crm-production.up.railway.app/api/whatsapp/webhook<br>
+                Instagram: POST https://alliance-crm-production.up.railway.app/api/instagram/webhook
+              </div>
+              <div style="font-size:11px;color:var(--z400);margin-top:6px">⚠️ Estas são URLs de saída (o Meta chama elas). O N8N NÃO chama estas URLs diretamente.</div>
+            </div>
+
+            <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid var(--z100)">
+              <div style="font-weight:600;color:var(--z700);margin-bottom:6px">2️⃣ Como a IA envia as respostas (SAÍDA)</div>
+              <div style="font-size:12px;color:var(--z500);margin-bottom:6px">O N8N deve fazer um HTTP Request com:</div>
+              <div style="background:#1e293b;color:#e2e8f0;border-radius:6px;padding:8px;font-family:monospace;font-size:11px">
+                URL: POST https://alliance-crm-production.up.railway.app/api/ia/resposta<br>
+                Headers: Content-Type: application/json<br>
+                Body:<br>
+                {<br>
+                &nbsp;&nbsp;"canal": "whatsapp" ou "instagram",<br>
+                &nbsp;&nbsp;"para": "{{telefone_ou_id_do_cliente}}",<br>
+                &nbsp;&nbsp;"texto": "{{resposta_gerada_pela_ia}}",<br>
+                &nbsp;&nbsp;"token_ia": "<span id="tokenExibir">alliance_ia_2024</span>"<br>
+                }
+              </div>
+            </div>
+
+            <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid var(--z100)">
+              <div style="font-weight:600;color:var(--z700);margin-bottom:6px">3️⃣ Dados que chegam no Webhook do N8N</div>
+              <div style="font-size:12px;color:var(--z500);margin-bottom:6px">Quando uma mensagem chegar, o sistema encaminha este JSON para o URL do N8N:</div>
+              <div style="background:#1e293b;color:#e2e8f0;border-radius:6px;padding:8px;font-family:monospace;font-size:11px">
+                {<br>
+                &nbsp;&nbsp;"canal": "whatsapp" ou "instagram",<br>
+                &nbsp;&nbsp;"de": "5571999887766" ou "1234567890",<br>
+                &nbsp;&nbsp;"nome": "Nome do cliente",<br>
+                &nbsp;&nbsp;"texto": "mensagem que o cliente enviou",<br>
+                &nbsp;&nbsp;"timestamp": "2026-03-26 14:30:00",<br>
+                &nbsp;&nbsp;"token_ia": "token de segurança"<br>
+                }
+              </div>
+            </div>
+
+            <div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:12px">
+              <div style="font-weight:600;color:#713f12;margin-bottom:4px">⚠️ Importante para o pessoal do N8N:</div>
+              <ul style="font-size:12px;color:#92400e;margin:0;padding-left:16px;line-height:1.8">
+                <li>O sistema encaminha TODA mensagem recebida para o N8N automaticamente</li>
+                <li>O N8N deve verificar o campo <b>canal</b> e responder com o canal correto</li>
+                <li>O campo <b>para</b> deve ser o mesmo valor do campo <b>de</b> recebido</li>
+                <li>O <b>token_ia</b> deve ser igual ao configurado acima (campo Token de Segurança)</li>
+                <li>A IA responde e a mensagem aparece na aba Atendimentos automaticamente</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    // Carregar config atual
+    api('GET', '/api/config/n8n').then(cfg2 => {
+      if(cfg2 && cfg2.token) document.getElementById('n8nToken').value = cfg2.token;
+      if(cfg2 && cfg2.webhook_url) document.getElementById('n8nWebhookUrl').value = cfg2.webhook_url;
+      if(cfg2 && cfg2.token) document.getElementById('tokenExibir').textContent = cfg2.token;
+      document.getElementById('n8nStatus').innerHTML = cfg2 && cfg2.token
+        ? '✅ IA configurada e pronta para receber mensagens!'
+        : '⚙️ Token de segurança não configurado ainda. Preencha abaixo.';
+      document.getElementById('n8nStatus').style.background = cfg2 && cfg2.token ? '#f0fdf4' : '#fef9c3';
+      document.getElementById('n8nStatus').style.color = cfg2 && cfg2.token ? '#166534' : '#713f12';
+      document.getElementById('n8nStatus').style.borderColor = cfg2 && cfg2.token ? '#bbf7d0' : '#fde047';
+    }).catch(()=>{
+      document.getElementById('n8nStatus').innerHTML = '⚙️ Configure o token abaixo para ativar a IA.';
+    });
   }
 
   updateHeader();
@@ -4569,6 +4680,41 @@ async function saveCfgProfile(){
   updateHeader();
   renderConfig();
   toast('Configurações salvas!','success');
+}
+
+// ═══════════════════════════════════════════════════════
+// FUNÇÕES N8N / IA
+// ═══════════════════════════════════════════════════════
+async function salvarN8NToken(){
+  const token=(document.getElementById('n8nToken')?.value||'').trim();
+  if(!token){toast('Preencha o token','error');return;}
+  try{
+    await api('PUT','/api/config/n8n',{token});
+    if(document.getElementById('tokenExibir')) document.getElementById('tokenExibir').textContent=token;
+    const st=document.getElementById('n8nStatus');
+    if(st){st.innerHTML='✅ Token salvo! A IA está pronta para receber mensagens.';st.style.background='#f0fdf4';st.style.color='#166534';st.style.borderColor='#bbf7d0';}
+    toast('Token da IA salvo!','success');
+  }catch(e){toast('Erro ao salvar: '+e.message,'error');}
+}
+
+async function salvarN8NWebhook(){
+  const url=(document.getElementById('n8nWebhookUrl')?.value||'').trim();
+  try{
+    await api('PUT','/api/config/n8n',{webhook_url:url});
+    toast(url?'URL do N8N salva! Todas as mensagens serão encaminhadas.':'URL removida.','success');
+  }catch(e){toast('Erro ao salvar: '+e.message,'error');}
+}
+
+async function testarN8NWebhook(){
+  const url=(document.getElementById('n8nWebhookUrl')?.value||'').trim();
+  if(!url){toast('Preencha a URL do N8N primeiro','error');return;}
+  try{
+    toast('Enviando mensagem de teste...','info');
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({canal:'teste',de:'sistema',nome:'Alliance CRM',texto:'Teste de conexão do Alliance CRM com N8N ✅',timestamp:new Date().toISOString()})});
+    if(r.ok) toast('✅ N8N respondeu! Conexão funcionando!','success');
+    else toast('⚠️ N8N respondeu com status '+r.status,'error');
+  }catch(e){toast('❌ N8N não respondeu: '+e.message,'error');}
 }
 
 async function salvarMeuPerfil(){
@@ -6539,6 +6685,37 @@ function instalarApp() {
     </div>
   </div>
 </div>
+
+<!-- WATERMARK -->
+<div id="lsWatermark" style="position:fixed;bottom:10px;right:14px;font-size:10px;color:rgba(0,0,0,0.13);pointer-events:none;z-index:9999;font-family:sans-serif;letter-spacing:0.4px;user-select:none">feito por Laryssa · LS MARKETING</div>
+
+<!-- ANTI-CLONAGEM -->
+<script>
+(function(){
+  // Domínios autorizados
+  const ALLOWED = ['alliance-crm-production.up.railway.app','localhost','127.0.0.1'];
+  const host = window.location.hostname;
+  if(!ALLOWED.some(d => host === d || host.endsWith('.'+d))){
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#fff;font-family:sans-serif;flex-direction:column;gap:16px"><div style="font-size:48px">🔒</div><div style="font-size:22px;font-weight:700">Sistema Protegido</div><div style="color:#94a3b8;font-size:14px">Este sistema é licenciado e não pode ser copiado.</div><div style="color:#94a3b8;font-size:12px">Domínio não autorizado: '+host+'</div><div style="font-size:11px;color:#475569;margin-top:8px">© LS MARKETING — Todos os direitos reservados</div></div>';
+    // Bloquear DevTools de inspecionar
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('keydown', e => {
+      if(e.key==='F12' || (e.ctrlKey&&e.shiftKey&&['I','J','C'].includes(e.key)) || (e.ctrlKey&&e.key==='U')) e.preventDefault();
+    });
+  }
+  // Anti-screenshot via console
+  const _toString = Function.prototype.toString;
+  let devtools = {open: false};
+  setInterval(()=>{
+    const t = performance.now();
+    debugger;
+    if(performance.now()-t > 100 && !devtools.open){
+      devtools.open = true;
+      // Silencioso — não interrompe admin legítimo
+    } else { devtools.open = false; }
+  }, 5000);
+})();
+</script>
 
 </body>
 </html>
