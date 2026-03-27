@@ -3760,15 +3760,20 @@ function renderMsgsMeta(de, tipo='whatsapp') {
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   const isInstagram = tipo === 'instagram';
 
-  box.innerHTML = msgs.map(m => {
+  // Garantir ordenação cronológica correta antes de renderizar
+  const msgsSorted = [...msgs].sort((a, b) => (a.criado_em||'').localeCompare(b.criado_em||''));
+
+  box.innerHTML = msgsSorted.map(m => {
     const enviada = m.direcao === 'enviada';
     const hora = (m.criado_em||'').slice(11,16);
-    const nomeSender = m.nome || (enviada ? 'Você' : 'Desconhecido');
+    const nomeSender = m.nome || (enviada ? 'Você' : 'Cliente Instagram');
     const bgColor = isInstagram ? (enviada ? '#e0f2fe' : '#fff') : (enviada ? '#dcf8c6' : '#fff');
+    const align = enviada ? 'flex-end' : 'flex-start';
+    const borderRadius = enviada ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
 
-    return `<div style="margin:4px 8px;display:flex;flex-direction:column;align-items:${enviada?'flex-end':'flex-start'}">
-      <div style="max-width:80%;background:${bgColor};border-radius:12px;padding:8px 12px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.1)">
-        <div style="font-weight:700;font-size:12px;margin-bottom:4px">${escHtml(nomeSender)}</div>
+    return `<div style="margin:4px 8px;display:flex;flex-direction:column;align-items:${align}">
+      <div style="max-width:80%;background:${bgColor};border-radius:${borderRadius};padding:8px 12px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.1)">
+        ${!enviada ? `<div style="font-weight:700;font-size:11px;color:#6366f1;margin-bottom:3px">${escHtml(nomeSender)}</div>` : ''}
         <div>${escHtml(m.texto||'')}</div>
         <div style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right">${hora}</div>
       </div>

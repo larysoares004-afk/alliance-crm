@@ -784,17 +784,19 @@ app.post('/api/instagram/webhook', (req, res) => {
       const igid     = msg.message?.mid; // Message ID
       const tipo     = 'text';
       const texto    = msg.message?.text || '[Mensagem]';
-      const nome     = msg.sender?.name || `Usuario ${de}`;
-      const username = msg.sender?.username || de;
+      // Usar username se disponível (mais amigável que o ID numérico)
+      const username = msg.sender?.username || null;
+      const nome     = msg.sender?.name || (username ? `@${username}` : `Cliente Instagram`);
 
       if (!de || !igid) {
         console.warn(`  [${idx}] Dados incompletos: de=${de}, igid=${igid}`);
         return;
       }
 
-      // Timestamp
-      const tsMeta   = msg.timestamp ? parseInt(msg.timestamp) : Math.floor(Date.now()/1000);
-      const dtBrasil = new Date((tsMeta * 1000) - (3 * 60 * 60 * 1000));
+      // Timestamp — Instagram envia em ms (ex: 1774551930570), WhatsApp em segundos
+      const tsMeta = msg.timestamp ? parseInt(msg.timestamp) : Date.now();
+      const tsMs   = tsMeta < 1e12 ? tsMeta * 1000 : tsMeta; // converte só se for segundos
+      const dtBrasil = new Date(tsMs - (3 * 60 * 60 * 1000));
       const Y = dtBrasil.getUTCFullYear(), M = String(dtBrasil.getUTCMonth()+1).padStart(2,'0'), D = String(dtBrasil.getUTCDate()).padStart(2,'0');
       const H = String(dtBrasil.getUTCHours()).padStart(2,'0'), Mi = String(dtBrasil.getUTCMinutes()).padStart(2,'0'), S = String(dtBrasil.getUTCSeconds()).padStart(2,'0');
       const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
@@ -1069,6 +1071,86 @@ app.post('/api/instagram/enviar', auth, async (req, res) => {
     console.error(`❌ Erro ao enviar mensagem Instagram:`, e.message);
     res.status(500).json({ erro: e.message });
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// INTEGRAÇÃO N8N / IA — Webhook para receber respostas da IA
+// ═══════════════════════════════════════════════════════════
+
+// Endpoint que o N8N chama para enviar resposta automática
+// POST /api/ia/resposta
+// Body: { canal: 'whatsapp'|'instagram', para: '5571...', texto: '...' }
+app.post('/api/ia/resposta', async (req, res) => {
+  try {
+    const { canal, para, texto, token_ia } = req.body;
+
+    // Validar token da IA (segurança básica)
+    const cfgIa = db.prepare("SELECT valor FROM config WHERE chave='n8n_token'").get();
+    const tokenEsperado = cfgIa ? JSON.parse(cfgIa.valor) : process.env.N8N_TOKEN || 'alliance_ia_2024';
+    if (token_ia !== tokenEsperado) {
+      return res.status(401).json({ erro: 'Token IA inválido' });
+    }
+
+    if (!para || !texto) return res.status(400).json({ erro: 'para e texto obrigatórios' });
+
+    if (canal === 'instagram') {
+      // Enviar via Instagram
+      const cfg = db.prepare("SELECT valor FROM config WHERE chave='instagram_meta'").get();
+      if (!cfg) return res.status(400).json({ erro: 'Instagram não configurado' });
+      const { token, business_id } = JSON.parse(cfg.valor);
+
+      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+      const criadoEm = dtBrasil.toISOString().slice(0,19).replace('T',' ');
+
+      // Salvar no banco
+      const msgId = `ia_${Date.now()}`;
+      db.prepare(`INSERT INTO instagram_mensagens (igid,de,nome,texto,tipo,direcao,criado_em) VALUES (?,?,?,?,'text','enviada',?)`)
+        .run(msgId, para, 'IA Alliance', texto, criadoEm);
+
+      // Enviar via API Instagram
+      const r = await fetch(`https://graph.instagram.com/v20.0/${business_id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ recipient: { id: para }, message: { text: texto } })
+      });
+      const data = await r.json();
+      console.log('🤖 IA Instagram enviou:', data);
+      res.json({ ok: true, data });
+
+    } else {
+      // Enviar via WhatsApp
+      const conta = db.prepare('SELECT * FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
+      if (!conta) return res.status(400).json({ erro: 'WhatsApp não configurado' });
+
+      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+      const criadoEm = dtBrasil.toISOString().slice(0,19).replace('T',' ');
+
+      // Salvar no banco
+      const wamid = `ia_wpp_${Date.now()}`;
+      db.prepare(`INSERT INTO wpp_mensagens (wamid,de,nome,texto,tipo,direcao,criado_em) VALUES (?,?,?,?,'text','enviada',?)`)
+        .run(wamid, para, 'IA Alliance', texto, criadoEm);
+
+      // Enviar via API WhatsApp
+      const r = await fetch(`https://graph.facebook.com/v20.0/${conta.phone_number_id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + conta.token },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: para, type: 'text', text: { body: texto } })
+      });
+      const data = await r.json();
+      console.log('🤖 IA WhatsApp enviou:', data);
+      res.json({ ok: true, data });
+    }
+  } catch(e) {
+    console.error('❌ Erro IA resposta:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// Endpoint para configurar token do N8N
+app.put('/api/config/n8n-token', auth, requireRole('admin','gestor'), (req, res) => {
+  const { token } = req.body;
+  db.prepare('INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)').run('n8n_token', JSON.stringify(token));
+  res.json({ ok: true });
 });
 
 // Transferir conversa Instagram
