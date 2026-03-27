@@ -790,11 +790,31 @@ app.post('/api/instagram/webhook', (req, res) => {
 
       const de       = msg.sender?.id;  // Instagram user ID
       const igid     = msg.message?.mid; // Message ID
-      const tipo     = 'text';
-      const texto    = msg.message?.text || '[Mensagem]';
       // Usar username se disponível (mais amigável que o ID numérico)
       const username = msg.sender?.username || null;
       const nome     = msg.sender?.name || (username ? `@${username}` : `Cliente Instagram`);
+
+      // Detectar tipo e texto da mensagem corretamente
+      let tipo = 'text';
+      let texto = '';
+      if (msg.message?.text) {
+        texto = msg.message.text;
+        tipo = 'text';
+      } else if (msg.message?.attachments) {
+        const att = msg.message.attachments[0];
+        if (att?.type === 'image') { tipo = 'image'; texto = '📷 Imagem'; }
+        else if (att?.type === 'video') { tipo = 'video'; texto = '🎥 Vídeo'; }
+        else if (att?.type === 'audio') { tipo = 'audio'; texto = '🎵 Áudio'; }
+        else if (att?.type === 'file') { tipo = 'file'; texto = '📎 Arquivo'; }
+        else if (att?.type === 'ig_reel') { tipo = 'video'; texto = '🎥 Reel compartilhado'; }
+        else { tipo = 'media'; texto = '📎 Mídia'; }
+      } else if (msg.message?.sticker_id) {
+        tipo = 'sticker'; texto = '🎭 Figurinha';
+      } else if (msg.message?.reply_to) {
+        texto = msg.message?.text || '↩️ Resposta a mensagem';
+      } else {
+        texto = '[Mensagem]';
+      }
 
       if (!de || !igid) {
         return;
