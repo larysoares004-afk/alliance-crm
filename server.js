@@ -479,10 +479,21 @@ app.post('/api/leads/public', async (req, res) => {
   if (!d.nome) return res.status(400).json({ error: 'Nome obrigatório' });
   const count = db.prepare('SELECT COUNT(*) as c FROM leads').get().c;
   const unidade = d.unidade || d.localidade || 'Conquista';
+  let telefone = (d.telefone || '').replace(/\D/g, '');
+  if (telefone && !telefone.startsWith('55')) telefone = '55' + telefone;
   const r = db.prepare('INSERT INTO leads (nome,telefone,origem,status,motivo,oculos,valor,os,unidade) VALUES (?,?,?,?,?,?,?,?,?)')
     .run(d.nome, d.telefone||'', d.origem||'Landing Page', 'LEAD', d.motivo||'', d.oculos||'Sim', d.valor||20, String(1000+count+1), unidade);
-  // Dispara WhatsApp automático sem bloquear resposta
+  // Dispara WhatsApp automático (mensagem de confirmação via Evolution API)
   enviarWhatsAppAutoLead(d.nome, d.telefone||'', unidade);
+  // Dispara para a IA (N8N) — se configurado, a IA vai continuar a conversa
+  if (telefone) {
+    setImmediate(() => dispararParaN8N('whatsapp', telefone, d.nome,
+      `[NOVO LEAD] ${d.nome} se cadastrou na landing page. ` +
+      `Unidade: ${unidade}. Motivo: ${d.motivo||'Exame de Vista'}. ` +
+      `Telefone: ${telefone}. ` +
+      `Inicie a conversa de agendamento com ele.`
+    ));
+  }
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
