@@ -1373,6 +1373,89 @@ app.post('/api/whatsapp/corrigir-timestamps', auth, requireRole('admin'), (req, 
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// DIAGNÓSTICO COMPLETO WHATSAPP
+// ════════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/whatsapp/diagnostico', auth, async (req, res) => {
+  const resultado = {
+    timestamp: new Date().toISOString(),
+    servidor: 'online',
+    webhook_url: `https://${req.hostname}/api/whatsapp/webhook`,
+    verify_token: WPP_VERIFY_TOKEN,
+    configuracao: null,
+    token_valido: false,
+    mensagens_no_banco: 0,
+    conversas_no_banco: 0,
+    ultimo_webhook_recebido: null,
+    erros: []
+  };
+
+  try {
+    // 1. Verificar config salva
+    const cfg = db.prepare("SELECT valor FROM config WHERE chave='whatsapp_meta'").get();
+    const conta = db.prepare('SELECT * FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
+    const token = conta?.token || (cfg ? JSON.parse(cfg.valor).token : null);
+    const phoneId = conta?.phone_id || (cfg ? JSON.parse(cfg.valor).phoneId : null);
+    const bizId = conta?.biz_id || (cfg ? JSON.parse(cfg.valor).bizId : null);
+
+    resultado.configuracao = {
+      tem_token: !!token,
+      tem_phone_id: !!phoneId,
+      tem_biz_id: !!bizId,
+      token_preview: token ? token.substring(0, 20) + '...' : null,
+      phone_id: phoneId || null,
+      biz_id: bizId || null
+    };
+
+    // 2. Testar token na API do Meta
+    if (token && phoneId) {
+      try {
+        const r = await fetchComTimeout(
+          `https://graph.facebook.com/v20.0/${phoneId}?fields=display_phone_number,verified_name&access_token=${token}`,
+          {}, 8000
+        );
+        const data = await r.json();
+        if (data.error) {
+          resultado.token_valido = false;
+          resultado.erros.push(`Token inválido: ${data.error.message}`);
+        } else {
+          resultado.token_valido = true;
+          resultado.configuracao.numero = data.display_phone_number;
+          resultado.configuracao.nome_verificado = data.verified_name;
+        }
+      } catch(e) {
+        resultado.erros.push(`Erro ao testar token: ${e.message}`);
+      }
+    } else {
+      resultado.erros.push('Token ou Phone ID não configurado no CRM');
+    }
+
+    // 3. Contar mensagens no banco
+    const totalMsgs = db.prepare('SELECT COUNT(*) as c FROM wpp_mensagens').get();
+    const totalConvs = db.prepare('SELECT COUNT(DISTINCT de) as c FROM wpp_mensagens').get();
+    const ultimaMsg = db.prepare('SELECT criado_em FROM wpp_mensagens ORDER BY criado_em DESC LIMIT 1').get();
+    resultado.mensagens_no_banco = totalMsgs?.c || 0;
+    resultado.conversas_no_banco = totalConvs?.c || 0;
+    resultado.ultimo_webhook_recebido = ultimaMsg?.criado_em || 'Nenhuma mensagem recebida ainda';
+
+  } catch(e) {
+    resultado.erros.push(`Erro geral: ${e.message}`);
+  }
+
+  // Diagnóstico final
+  resultado.status = resultado.token_valido ? '✅ OK' : '❌ PROBLEMA';
+  resultado.acao_necessaria = !resultado.configuracao?.tem_token
+    ? 'Configure o Token do WhatsApp em Configurações > WhatsApp'
+    : !resultado.token_valido
+    ? 'Token inválido ou expirado — gere um novo token no Meta App Manager'
+    : resultado.mensagens_no_banco === 0
+    ? 'Token OK mas nenhuma mensagem. Verifique o webhook no Meta App Manager.'
+    : 'Tudo OK!';
+
+  res.json(resultado);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // HEALTH CHECK
 // ════════════════════════════════════════════════════════════════════════════════
 
