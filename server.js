@@ -1126,18 +1126,18 @@ app.post('/api/whatsapp/enviar-midia', auth, _multerUpload, async (req, res) => 
     let nomeArquivo = arquivo.originalname || 'arquivo';
     let filePath = arquivo.path;
 
-    // Converter webm → ogg se necessário (WhatsApp não aceita webm)
+    // Converter webm → mp3 se necessário (WhatsApp não aceita webm)
     if (mime && (mime.includes('webm') || mime.includes('x-matroska'))) {
       const { execSync } = require('child_process');
-      const oggPath = arquivo.path + '_conv.ogg';
+      const mp3Path = arquivo.path + '_conv.mp3';
       try {
-        execSync(`ffmpeg -y -i "${arquivo.path}" -c:a libopus -b:a 64k "${oggPath}"`, { timeout: 30000 });
-        filePath = oggPath;
-        mime = 'audio/ogg; codecs=opus';
-        nomeArquivo = nomeArquivo.replace(/\.(webm|mkv)$/i, '.ogg');
-        console.log(`🔄 Convertido webm→ogg: ${oggPath}`);
+        execSync(`ffmpeg -y -i "${arquivo.path}" -c:a libmp3lame -b:a 128k -ar 44100 "${mp3Path}"`, { timeout: 30000 });
+        filePath = mp3Path;
+        mime = 'audio/mpeg';
+        nomeArquivo = nomeArquivo.replace(/\.(webm|mkv|ogg)$/i, '.mp3');
+        console.log(`🔄 Convertido webm→mp3: ${mp3Path}`);
       } catch(convErr) {
-        console.warn('⚠️ Conversão ffmpeg falhou, enviando webm:', convErr.message);
+        console.warn('⚠️ Conversão ffmpeg falhou:', convErr.message);
       }
     }
 
@@ -1193,7 +1193,7 @@ app.post('/api/whatsapp/enviar-midia', auth, _multerUpload, async (req, res) => 
       const ext = nomeArquivo.includes('.') ? nomeArquivo.split('.').pop() : mime.split('/')[1] || 'bin';
       const localFilename = `${mediaIdUp}.${ext}`;
       const localPath = path.join(MEDIA_DIR, localFilename);
-      fs.copyFileSync(arquivo.path, localPath);
+      fs.copyFileSync(filePath, localPath); // usa arquivo convertido se houver
       const localUrl = '/api/media/' + localFilename;
 
       db.prepare(`INSERT INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em, media_id, media_url, media_mime)
