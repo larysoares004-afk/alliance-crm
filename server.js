@@ -823,8 +823,8 @@ app.post('/api/whatsapp/webhook', (req, res) => {
               console.log(`   📋 [LEAD AUTO] Criado: ${nome || de} (${de})`);
             }
           } catch(eL) { console.warn('Erro ao auto-criar lead WhatsApp:', eL.message); }
-          // Disparar para N8N automaticamente
-          setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
+          // Disparar para N8N automaticamente (com tipo e mediaId para mídia)
+          setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto, tipo, mediaId));
           // Buscar URL de mídia de forma assíncrona
           if (mediaId && ['image','audio','video','document','sticker'].includes(tipo)) {
             setImmediate(async () => {
@@ -986,7 +986,7 @@ app.post('/api/instagram/webhook', (req, res) => {
         } catch(eL) { console.warn('Erro ao auto-criar lead Instagram:', eL.message); }
 
         // Disparar para N8N automaticamente (assíncrono, não bloqueia)
-        setImmediate(() => dispararParaN8N('instagram', de, nome, texto));
+        setImmediate(() => dispararParaN8N('instagram', de, nome, texto, tipo || 'text', null));
 
         // Buscar nome e foto real do usuário Instagram via API (assincrono)
         setImmediate(async () => {
@@ -1607,7 +1607,7 @@ async function transcreverAudio(filepath, mime) {
 }
 
 // Função para disparar mensagem para o N8N automaticamente
-async function dispararParaN8N(canal, de, nome, texto) {
+async function dispararParaN8N(canal, de, nome, texto, tipo, mediaId) {
   try {
     const cfgN8N = db.prepare("SELECT valor FROM config WHERE chave='n8n_config'").get();
     if (!cfgN8N) return;
@@ -1617,7 +1617,32 @@ async function dispararParaN8N(canal, de, nome, texto) {
     const cfgToken = db.prepare("SELECT valor FROM config WHERE chave='n8n_token'").get();
     const tokenIa = cfgToken ? JSON.parse(cfgToken.valor) : 'alliance_ia_2024';
 
-    const payload = { canal, de, nome, texto, timestamp: new Date().toISOString(), token_ia: tokenIa };
+    // Monta URL pública do arquivo de mídia se houver
+    const host = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : `http://localhost:${PORT}`;
+    const media_url = mediaId ? `${host}/api/media-proxy/${mediaId}` : null;
+
+    // Monta texto enriquecido para o N8N
+    const tipoFinal = tipo || 'text';
+    let textoN8N = texto;
+    if (tipoFinal !== 'text' && media_url) {
+      textoN8N = `[${tipoFinal.toUpperCase()}] ${media_url}`;
+    }
+
+    const payload = {
+      canal,
+      de,
+      nome,
+      texto: textoN8N,       // texto com link se for mídia
+      texto_original: texto, // texto original ([Áudio], [Imagem], etc)
+      tipo: tipoFinal,
+      media_url,             // link direto para o arquivo
+      timestamp: new Date().toISOString(),
+      token_ia: tokenIa
+    };
+
+    console.log(`📡 [N8N] Disparando: canal=${canal}, tipo=${tipoFinal}, de=${de}, media_url=${media_url}`);
     fetchComTimeout(n8n.webhook_url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
