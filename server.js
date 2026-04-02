@@ -1031,31 +1031,46 @@ app.post('/api/instagram/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
-// Proxy para servir mídia da Meta (com autenticação)
-app.get('/api/media-proxy/:mediaId', auth, async (req, res) => {
+// Proxy para servir mídia da Meta (token como query param para img/audio/video tags)
+app.get('/api/media-proxy/:mediaId', async (req, res) => {
   try {
     const mediaId = req.params.mediaId;
-    const token = req.query.token;
-    if (!token) return res.status(400).json({ erro: 'Token não fornecido' });
+    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      console.warn(`⚠️ Proxy sem token para media ${mediaId}`);
+      return res.status(401).json({ erro: 'Token inválido' });
+    }
 
+    console.log(`📥 Proxy: ${mediaId.substring(0,20)}...`);
     const mediaRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${mediaId}`, {
       headers: { Authorization: 'Bearer ' + token }
     });
-    if (!mediaRes.ok) return res.status(mediaRes.status).json({ erro: 'Meta error' });
+    if (!mediaRes.ok) {
+      console.warn(`⚠️ Meta retornou ${mediaRes.status}`);
+      return res.status(mediaRes.status).json({ erro: 'Meta error' });
+    }
 
     const info = await mediaRes.json();
-    if (!info.url) return res.status(400).json({ erro: 'No URL' });
+    if (!info.url) {
+      console.warn(`⚠️ Meta sem URL: ${JSON.stringify(info).substring(0,100)}`);
+      return res.status(400).json({ erro: 'No URL' });
+    }
 
     const fileRes = await fetchComTimeout(info.url, {
       headers: { Authorization: 'Bearer ' + token }
     });
-    if (!fileRes.ok) return res.status(fileRes.status).json({ erro: 'Download error' });
+    if (!fileRes.ok) {
+      console.warn(`⚠️ Download Meta ${fileRes.status}`);
+      return res.status(fileRes.status).json({ erro: 'Download error' });
+    }
 
     res.setHeader('Content-Type', info.mime_type || 'application/octet-stream');
     res.setHeader('Cache-Control', 'public, max-age=3600');
     const buffer = await fileRes.arrayBuffer();
+    console.log(`✅ Proxy: ${(buffer.byteLength/1024).toFixed(1)}KB enviado`);
     res.send(Buffer.from(buffer));
   } catch(e) {
+    console.error(`❌ Proxy erro: ${e.message}`);
     res.status(500).json({ erro: e.message });
   }
 });
