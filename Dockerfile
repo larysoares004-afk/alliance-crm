@@ -1,8 +1,8 @@
 FROM node:20-slim
-RUN apt-get update && apt-get install -y python3 make g++ git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 make g++ git ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # ARG antes do COPY — invalida cache do npm install quando muda
-ARG CACHEBUST=20260402f-use-meta-token
+ARG CACHEBUST=20260402g-ffmpeg
 RUN echo "Cache bust: $CACHEBUST"
 COPY package*.json ./
 RUN npm install --production

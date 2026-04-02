@@ -1122,11 +1122,27 @@ app.post('/api/whatsapp/enviar-midia', auth, _multerUpload, async (req, res) => 
     if (!conta?.token) return res.status(400).json({ erro: 'WhatsApp não configurado' });
 
     const { token, phone_id: phoneId } = conta;
-    const mime = arquivo.mimetype;
-    const nomeArquivo = arquivo.originalname || 'arquivo';
+    let mime = arquivo.mimetype;
+    let nomeArquivo = arquivo.originalname || 'arquivo';
+    let filePath = arquivo.path;
+
+    // Converter webm → ogg se necessário (WhatsApp não aceita webm)
+    if (mime && (mime.includes('webm') || mime.includes('x-matroska'))) {
+      const { execSync } = require('child_process');
+      const oggPath = arquivo.path + '_conv.ogg';
+      try {
+        execSync(`ffmpeg -y -i "${arquivo.path}" -c:a libopus -b:a 64k "${oggPath}"`, { timeout: 30000 });
+        filePath = oggPath;
+        mime = 'audio/ogg; codecs=opus';
+        nomeArquivo = nomeArquivo.replace(/\.(webm|mkv)$/i, '.ogg');
+        console.log(`🔄 Convertido webm→ogg: ${oggPath}`);
+      } catch(convErr) {
+        console.warn('⚠️ Conversão ffmpeg falhou, enviando webm:', convErr.message);
+      }
+    }
 
     // 1. Upload da mídia para Meta
-    const fileBuffer = fs.readFileSync(arquivo.path);
+    const fileBuffer = fs.readFileSync(filePath);
     const blob = new Blob([fileBuffer], { type: mime });
     const formUpload = new FormData();
     formUpload.append('file', blob, nomeArquivo);
@@ -1140,7 +1156,8 @@ app.post('/api/whatsapp/enviar-midia', auth, _multerUpload, async (req, res) => 
     });
     const uploadData = await uploadRes.json();
     if (!uploadData.id) {
-      fs.unlinkSync(arquivo.path);
+      try { fs.unlinkSync(arquivo.path); } catch(e) {}
+      try { if (filePath !== arquivo.path) fs.unlinkSync(filePath); } catch(e) {}
       return res.status(400).json({ erro: uploadData.error?.message || 'Falha no upload para Meta' });
     }
     const mediaIdUp = uploadData.id;
