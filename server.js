@@ -301,8 +301,12 @@ const loginLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: 2000,
   message: { error: 'Rate limit excedido.' },
+  skip: (req) => {
+    // Nunca bloquear upload de mídia
+    return req.path.includes('/enviar-midia') || req.path.includes('/media-proxy');
+  }
 });
 
 // Rate limit específico para o endpoint da IA (mais restritivo)
