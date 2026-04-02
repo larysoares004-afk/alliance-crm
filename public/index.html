@@ -4351,64 +4351,83 @@ async function enviarMidiaWpp(input) {
 async function iniciarGravacao() {
   if (!window._recorder) {
     try {
+      // Verificar suporte
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast('❌ Seu navegador não suporta gravação de áudio', 'error'); return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+      // Detectar mimeType suportado automaticamente
+      const mimes = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
+      const mime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || '';
+      console.log('🎙️ mimeType selecionado:', mime || '(padrão)');
+
+      const mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       let audioChunks = [];
 
-      mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunks, { type: 'audio/webm' });
-        console.log('🎙️ Áudio gravado:', blob.size, 'bytes');
+        const blobMime = mime || 'audio/webm';
+        const blob = new Blob(audioChunks, { type: blobMime });
+        console.log('🎙️ Áudio gravado:', blob.size, 'bytes, tipo:', blobMime);
 
-        // Enviar áudio diretamente para o servidor
+        if (blob.size < 100) { toast('❌ Gravação muito curta', 'error'); window._recorder = null; const b = document.getElementById('micBtn') || document.getElementById('micBtn2'); if(b) b.innerHTML='🎙️'; return; }
+
         const de = uiState.metaChatDe;
-        if (!de) { toast('Nenhuma conversa aberta', 'error'); window._recorder = null; console.warn('❌ Sem conversa aberta'); return; }
+        if (!de) { toast('❌ Nenhuma conversa aberta', 'error'); window._recorder = null; return; }
 
         const btn = document.getElementById('micBtn') || document.getElementById('micBtn2');
-        if (btn) btn.innerHTML = '⏳';
+        if (btn) { btn.innerHTML = '⏳'; btn.disabled = true; }
 
         try {
+          const ext = blobMime.includes('ogg') ? 'ogg' : blobMime.includes('mp4') ? 'm4a' : 'webm';
           const form = new FormData();
-          form.append('arquivo', blob, `audio-${Date.now()}.webm`);
+          form.append('arquivo', blob, `audio-${Date.now()}.${ext}`);
           form.append('para', de);
           const token = _getAuthToken();
-          console.log('📤 Enviando áudio para:', de);
+          console.log('📤 Enviando áudio para:', de, 'ext:', ext);
           const res = await fetch('/api/whatsapp/enviar-midia', {
             method: 'POST',
             headers: { Authorization: 'Bearer ' + token },
             body: form
           });
           const data = await res.json();
-          console.log('📥 Resposta servidor:', data);
+          console.log('📥 Resposta:', data);
           if (data.ok) {
             toast('✅ Áudio enviado!', 'success');
             const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
             S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
             renderMsgsMeta(de);
           } else {
-            toast('❌ Erro: ' + (data.erro || 'Falha ao enviar áudio'), 'error');
+            toast('❌ ' + (data.erro || 'Falha ao enviar áudio'), 'error');
           }
         } catch(e) {
           console.error('❌ Erro ao enviar:', e);
-          toast('❌ Erro ao enviar áudio: ' + e.message, 'error');
+          toast('❌ Erro: ' + e.message, 'error');
         }
 
-        // Limpar estado
         window._recorder = null;
-        if (btn) btn.innerHTML = '🎙️';
+        if (btn) { btn.innerHTML = '🎙️'; btn.disabled = false; }
       };
 
       window._recorder = { mediaRecorder, stream, audioChunks };
       const btn = document.getElementById('micBtn') || document.getElementById('micBtn2');
-      if (btn) btn.innerHTML = '⏹️';
-      mediaRecorder.start();
+      if (btn) { btn.innerHTML = '⏹️'; btn.style.background = '#ef4444'; }
+      mediaRecorder.start(200); // coleta chunks a cada 200ms
+      toast('🎙️ Gravando... clique ⏹️ para parar', 'info');
     } catch(e) {
-      toast('Erro ao acessar microfone: ' + e.message, 'error');
+      console.error('❌ Erro microfone:', e);
+      if (e.name === 'NotAllowedError') toast('❌ Permissão de microfone negada! Clique no cadeado 🔒 no navegador e permita o microfone.', 'error');
+      else if (e.name === 'NotFoundError') toast('❌ Nenhum microfone encontrado!', 'error');
+      else toast('❌ Erro: ' + e.message, 'error');
       window._recorder = null;
     }
   } else {
     // Parar gravação
+    const btn = document.getElementById('micBtn') || document.getElementById('micBtn2');
+    if (btn) btn.style.background = '#4CAF50';
     window._recorder.mediaRecorder.stop();
   }
 }
