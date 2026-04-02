@@ -290,29 +290,29 @@ select.inp{cursor:pointer}
 @keyframes ripple{0%{transform:scale(0);opacity:.4}100%{transform:scale(4);opacity:0}}
 @keyframes gradientMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 
-/* Elementos animados */
-.view.on{animation:fadeIn .25s ease both}
-.scard{animation:fadeInUp .3s ease both}
-.scard:nth-child(1){animation-delay:.03s}
-.scard:nth-child(2){animation-delay:.06s}
-.scard:nth-child(3){animation-delay:.09s}
-.scard:nth-child(4){animation-delay:.12s}
-.scard:nth-child(5){animation-delay:.15s}
-.scard:nth-child(6){animation-delay:.18s}
-.scard:nth-child(7){animation-delay:.21s}
-.kcard{animation:fadeInScale .2s ease both}
-.sec-card{animation:fadeIn .25s ease both}
-.svc-card{animation:fadeInUp .3s ease both}
-.wpp-card{animation:fadeInUp .3s ease both}
-.att-item{animation:slideInRight .2s ease both}
+/* Elementos animados - removido para evitar movimento durante renderização */
+.view.on{}
+.scard{}
+.scard:nth-child(1){}
+.scard:nth-child(2){}
+.scard:nth-child(3){}
+.scard:nth-child(4){}
+.scard:nth-child(5){}
+.scard:nth-child(6){}
+.scard:nth-child(7){}
+.kcard{}
+.sec-card{}
+.svc-card{}
+.wpp-card{}
+.att-item{}
 .modal{animation:fadeInScale .18s cubic-bezier(.34,1.56,.64,1) both}
 .overlay.open .modal{animation:fadeInScale .22s cubic-bezier(.34,1.56,.64,1) both}
-.kcol{animation:fadeInUp .3s ease both}
-.kcol:nth-child(1){animation-delay:.0s}
-.kcol:nth-child(2){animation-delay:.05s}
-.kcol:nth-child(3){animation-delay:.1s}
-.kcol:nth-child(4){animation-delay:.15s}
-.kcol:nth-child(5){animation-delay:.2s}
+.kcol{}
+.kcol:nth-child(1){}
+.kcol:nth-child(2){}
+.kcol:nth-child(3){}
+.kcol:nth-child(4){}
+.kcol:nth-child(5){}
 
 /* Botões com ripple */
 .btn{position:relative;overflow:hidden}
@@ -341,10 +341,10 @@ select.inp{cursor:pointer}
 .skeleton{background:linear-gradient(90deg,var(--z100) 25%,var(--z50) 50%,var(--z100) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px}
 
 /* Stat val counter */
-.scard-val{animation:countUp .4s cubic-bezier(.34,1.56,.64,1) both}
+.scard-val{}
 
 /* Toast animado */
-.toast{animation:fadeInUp .3s ease both}
+.toast{}
 
 /* Bell ring on new notif */
 .bell-ring{animation:bellRing .6s ease}
@@ -3340,7 +3340,7 @@ function renderWpp(){
   const grid=document.getElementById('wppGrid');
   if(!grid)return;
   if(state.wppAccounts.length===0){
-    grid.innerHTML=`<div style="grid-column:span 3;text-align:center;padding:48px 24px;border:2px dashed var(--z200);border-radius:24px;background:#fff;animation:fadeIn .3s ease">
+    grid.innerHTML=`<div style="grid-column:span 3;text-align:center;padding:48px 24px;border:2px dashed var(--z200);border-radius:24px;background:#fff">
       <div style="font-size:56px;margin-bottom:12px">📱</div>
       <div style="font-size:16px;font-weight:800;color:var(--z700);margin-bottom:6px">Nenhuma conta conectada</div>
       <div style="font-size:13px;color:var(--z400);margin-bottom:20px">Conecte um número WhatsApp Business para receber e enviar mensagens</div>
@@ -3349,9 +3349,9 @@ function renderWpp(){
     return;
   }
   grid.innerHTML=state.wppAccounts.map((w,i)=>`
-    <div class="wpp-card" style="animation:fadeInUp .3s ease ${i*0.05}s both">
+    <div class="wpp-card">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
-        <div class="wpp-ico ${w.status==='connected'?'conn':'disc'}" style="animation:${w.status==='connected'?'pulse 3s ease infinite':''}">${WPP_ICON}</div>
+        <div class="wpp-ico ${w.status==='connected'?'conn':'disc'}">${WPP_ICON}</div>
         <div style="display:flex;gap:4px">
           <button class="kact" title="Status" onclick="evolCheckStatus('${w.id}')">🔄</button>
           ${w.status!=='connected'?`<button class="kact" title="Reconectar" onclick="evolReconnect('${w.id}')">📱</button>`:''}
@@ -3443,7 +3443,7 @@ async function evolFetchQR(url,key,instance,name,attempt=0){
     const data=await res.json();
     if(data.base64){
       // QR Code disponível — exibe
-      qrC.innerHTML=`<img src="${data.base64}" style="width:210px;height:210px;object-fit:contain;border-radius:12px;animation:fadeInScale .3s ease">`;
+      qrC.innerHTML=`<img src="${data.base64}" style="width:210px;height:210px;object-fit:contain;border-radius:12px">`;
       qrSt.textContent='Escaneie com o WhatsApp';
       qrSb.textContent='WhatsApp → Aparelhos Conectados → Conectar Aparelho';
       // Polling para detectar conexão
@@ -3487,7 +3487,7 @@ function evolOnConnected(url,key,instance,name,phone){
   if(evolPollInterval){clearInterval(evolPollInterval);evolPollInterval=null;}
   const qrC=document.getElementById('qrContainer');
   const qrSt=document.getElementById('qrStatus');
-  if(qrC)qrC.innerHTML=`<div style="text-align:center;animation:fadeInScale .4s ease"><div style="font-size:64px">✅</div><div style="font-size:15px;font-weight:800;color:#059669;margin-top:8px">Conectado!</div></div>`;
+  if(qrC)qrC.innerHTML=`<div style="text-align:center"><div style="font-size:64px">✅</div><div style="font-size:15px;font-weight:800;color:#059669;margin-top:8px">Conectado!</div></div>`;
   if(qrSt)qrSt.textContent='WhatsApp Business conectado com sucesso!';
   S(s=>s.wppAccounts.push({id:newId('w'),name,phone,status:'connected',lastSync:new Date().toISOString(),evolUrl:url,evolKey:key,evolInstance:instance}));
   addNotification('WhatsApp conectado',`${name} está pronto para uso.`,'wpp');
@@ -3790,6 +3790,7 @@ async function openChatMeta(de, nome) {
     <div id="transferInfo" style="padding:8px 12px;background:#f0f9ff;border-bottom:1px solid #e0e7ff;font-size:11px;display:none"></div>
     <div class="msgs" id="msgBox" style="flex:1;overflow-y:auto;padding:12px"></div>
     <div class="msg-inp-row">
+      <button id="micBtn" title="Gravar áudio (clique pra gravar)" style="cursor:pointer;width:42px;height:42px;background:#4CAF50;border:none;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px;padding:0;margin:0" onclick="iniciarGravacao()">🎙️</button>
       <label title="Enviar arquivo" style="cursor:pointer;width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px" onclick="document.getElementById('fileInputWpp').click()">📎</label>
       <input type="file" id="fileInputWpp" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="enviarMidiaWpp(this)">
       <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsg()">
@@ -3815,16 +3816,19 @@ async function openChatMeta(de, nome) {
     }
   } catch(e) { console.error(e); }
 
-  // Polling a cada 5s para novas mensagens
+  // Polling a cada 30s para novas mensagens (atualiza SÓ se houver novas mensagens)
   if (window._metaPollTimer) clearInterval(window._metaPollTimer);
   window._metaPollTimer = setInterval(async () => {
     if (uiState.metaChatDe !== de) { clearInterval(window._metaPollTimer); return; }
     try {
       const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
-      S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
-      renderMsgsMeta(de);
+      const old = (state.metaMensagens || {})[de] || [];
+      if (msgs.length > old.length) {
+        S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+        renderMsgsMeta(de);
+      }
     } catch(e) {}
-  }, 5000);
+  }, 30000);
 }
 
 function renderConteudoMsg(m) {
@@ -3842,8 +3846,7 @@ function renderConteudoMsg(m) {
       ${texto && texto !== '[Imagem]' ? `<div style="font-size:12px;margin-top:4px">${escHtml(texto)}</div>` : ''}`;
   }
   if (tipo === 'audio' && proxyUrl) {
-    return `<audio controls style="max-width:220px;width:100%;display:block"><source src="${proxyUrl}"></audio>
-      ${trans ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;background:#f3f4f6;padding:4px 8px;border-radius:6px">📝 ${escHtml(trans)}</div>` : ''}`;
+    return `<audio controls style="width:200px;height:32px;display:block;margin:4px 0"><source src="${proxyUrl}" type="audio/webm"></audio>${trans ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;background:#f3f4f6;padding:4px 8px;border-radius:6px">📝 ${escHtml(trans)}</div>` : ''}`;
   }
   if (tipo === 'video' && proxyUrl) {
     return `<video controls style="max-width:220px;max-height:300px;border-radius:8px;display:block"><source src="${proxyUrl}"></video>`;
@@ -4274,6 +4277,7 @@ function openChat(id, name, phone, accountName=''){
     </div>
     <div class="msgs" id="msgBox"></div>
     <div class="msg-inp-row">
+      <button id="micBtn2" title="Gravar áudio (clique pra gravar)" style="cursor:pointer;width:42px;height:42px;background:#4CAF50;border:none;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px;padding:0;margin:0" onclick="iniciarGravacao()">🎙️</button>
       <label title="Enviar arquivo" style="cursor:pointer;width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px" onclick="document.getElementById('fileInputWpp').click()">📎</label>
       <input type="file" id="fileInputWpp" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="enviarMidiaWpp(this)">
       <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsg()">
@@ -4334,6 +4338,71 @@ async function enviarMidiaWpp(input) {
   }
   if (label) label.textContent = '📎';
   input.value = '';
+}
+
+async function iniciarGravacao() {
+  if (!window._recorder) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      let audioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        console.log('🎙️ Áudio gravado:', blob.size, 'bytes');
+
+        // Enviar áudio diretamente para o servidor
+        const de = uiState.metaChatDe;
+        if (!de) { toast('Nenhuma conversa aberta', 'error'); window._recorder = null; console.warn('❌ Sem conversa aberta'); return; }
+
+        const btn = document.getElementById('micBtn') || document.getElementById('micBtn2');
+        if (btn) btn.innerHTML = '⏳';
+
+        try {
+          const form = new FormData();
+          form.append('arquivo', blob, `audio-${Date.now()}.webm`);
+          form.append('para', de);
+          const token = _getAuthToken();
+          console.log('📤 Enviando áudio para:', de);
+          const res = await fetch('/api/whatsapp/enviar-midia', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+            body: form
+          });
+          const data = await res.json();
+          console.log('📥 Resposta servidor:', data);
+          if (data.ok) {
+            toast('✅ Áudio enviado!', 'success');
+            const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
+            S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+            renderMsgsMeta(de);
+          } else {
+            toast('❌ Erro: ' + (data.erro || 'Falha ao enviar áudio'), 'error');
+          }
+        } catch(e) {
+          console.error('❌ Erro ao enviar:', e);
+          toast('❌ Erro ao enviar áudio: ' + e.message, 'error');
+        }
+
+        // Limpar estado
+        window._recorder = null;
+        if (btn) btn.innerHTML = '🎙️';
+      };
+
+      window._recorder = { mediaRecorder, stream, audioChunks };
+      const btn = document.getElementById('micBtn') || document.getElementById('micBtn2');
+      if (btn) btn.innerHTML = '⏹️';
+      mediaRecorder.start();
+    } catch(e) {
+      toast('Erro ao acessar microfone: ' + e.message, 'error');
+      window._recorder = null;
+    }
+  } else {
+    // Parar gravação
+    window._recorder.mediaRecorder.stop();
+  }
 }
 
 function sendMsg(){

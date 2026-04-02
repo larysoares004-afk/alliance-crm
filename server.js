@@ -1093,14 +1093,17 @@ app.get('/api/media/:filename', (req, res) => {
 });
 
 // Enviar mídia via WhatsApp (imagem, áudio, documento, vídeo)
+const UPLOAD_DIR = './uploads';
+try { if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch(e) {}
 const _multerUpload = multer
-  ? multer({ dest: '/tmp/wpp_uploads/', limits: { fileSize: 25 * 1024 * 1024 } }).single('arquivo')
+  ? multer({ dest: UPLOAD_DIR, limits: { fileSize: 25 * 1024 * 1024 } }).single('arquivo')
   : (req, res, next) => res.status(501).json({ erro: 'Upload não disponível (multer não instalado)' });
 
 app.post('/api/whatsapp/enviar-midia', auth, _multerUpload, async (req, res) => {
   try {
     const { para, contaId } = req.body;
     const arquivo = req.file;
+    console.log(`📤 Recebido arquivo: ${arquivo?.originalname || 'sem nome'}, tamanho: ${arquivo?.size || 0} bytes, para: ${para}`);
     if (!arquivo) return res.status(400).json({ erro: 'Arquivo não enviado' });
     if (!para) return res.status(400).json({ erro: 'Destinatário não informado' });
 
