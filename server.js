@@ -816,34 +816,56 @@ app.post('/api/whatsapp/webhook', (req, res) => {
           } catch(eL) { console.warn('Erro ao auto-criar lead WhatsApp:', eL.message); }
           // Disparar para N8N automaticamente
           setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
-          // Baixar mídia de forma assíncrona
+          // Buscar URL de mídia de forma assíncrona
           if (mediaId && ['image','audio','video','document','sticker'].includes(tipo)) {
             setImmediate(async () => {
               try {
-                console.log(`   ⏳ [MÍDIA] Iniciando download: tipo=${tipo}, mediaId=${mediaId}`);
+                console.log(`   ⏳ [MÍDIA] tipo=${tipo}, mediaId=${mediaId.substring(0,20)}...`);
                 const phoneNumId = value?.metadata?.phone_number_id;
                 const contaM = phoneNumId
                   ? db.prepare('SELECT token FROM wpp_contas WHERE phone_id=? AND ativo=1').get(phoneNumId)
                   : db.prepare('SELECT token FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
                 const tokenM = contaM?.token;
                 if (!tokenM) {
-                  console.warn(`   ⚠️  [MÍDIA] Token não encontrado para phone_id=${phoneNumId}`);
+                  console.warn(`   ⚠️  [MÍDIA] Nenhum token WhatsApp ativo encontrado`);
                   return;
                 }
-                const { filename, filepath, mime } = await fetchMediaMeta(mediaId, tokenM);
-                const localUrl = '/api/media/' + filename;
-                db.prepare('UPDATE wpp_mensagens SET media_url=?, media_mime=? WHERE wamid=?').run(localUrl, mime, wamid);
-                console.log(`   ✅ [MÍDIA] Salva no banco: ${filename}`);
-                // Transcrever áudio automaticamente se OpenAI configurado
-                if (tipo === 'audio' && process.env.OPENAI_API_KEY) {
-                  console.log(`   🎯 [ÁUDIO] Iniciando transcrição...`);
-                  const trans = await transcreverAudio(filepath, mime);
-                  if (trans) {
-                    db.prepare('UPDATE wpp_mensagens SET transcricao=? WHERE wamid=?').run(trans, wamid);
-                    console.log(`   ✅ [ÁUDIO] Transcrição concluída: "${trans.substring(0,60)}..."`);
+                const mediaInfo = await fetchMediaMeta(mediaId, tokenM);
+                // Salva URL da Meta direto no banco
+                db.prepare('UPDATE wpp_mensagens SET media_url=?, media_mime=? WHERE wamid=?')
+                  .run(mediaInfo.url, mediaInfo.mime, wamid);
+                console.log(`   ✅ [MÍDIA] URL salva no banco`);
+
+                // Para áudio: download local + transcrição
+                if (tipo === 'audio') {
+                  try {
+                    const fileRes = await fetchComTimeout(mediaInfo.url, {
+                      headers: { Authorization: 'Bearer ' + tokenM }
+                    });
+                    if (fileRes.ok) {
+                      const buffer = Buffer.from(await fileRes.arrayBuffer());
+                      const ext = mediaInfo.mime.split('/')[1]?.split(';')[0] || 'ogg';
+                      const filepath = path.join(MEDIA_DIR, `${mediaId}.${ext}`);
+                      fs.writeFileSync(filepath, buffer);
+
+                      // Transcrever se OpenAI configurado
+                      if (process.env.OPENAI_API_KEY) {
+                        console.log(`   🎯 Transcrevendo áudio...`);
+                        const trans = await transcreverAudio(filepath, mediaInfo.mime);
+                        if (trans) {
+                          db.prepare('UPDATE wpp_mensagens SET transcricao=? WHERE wamid=?')
+                            .run(trans, wamid);
+                          console.log(`   ✅ Transcrição: "${trans.substring(0,60)}..."`);
+                        }
+                      }
+                    }
+                  } catch(eAudio) {
+                    console.warn(`   ⚠️ Transcrição ignorada: ${eAudio.message}`);
                   }
                 }
-              } catch(eM) { console.error(`   ❌ [MÍDIA] Erro ao processar: ${eM.message}`); }
+              } catch(eM) {
+                console.error(`   ❌ [MÍDIA] ${eM.message}`);
+              }
             });
           }
         } else {
@@ -1009,12 +1031,41 @@ app.post('/api/instagram/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
-// Servir arquivos de mídia salvos localmente (sem auth — filenames são IDs internos da Meta)
+// Proxy para servir mídia da Meta (com autenticação)
+app.get('/api/media-proxy/:mediaId', auth, async (req, res) => {
+  try {
+    const mediaId = req.params.mediaId;
+    const token = req.query.token;
+    if (!token) return res.status(400).json({ erro: 'Token não fornecido' });
+
+    const mediaRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${mediaId}`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!mediaRes.ok) return res.status(mediaRes.status).json({ erro: 'Meta error' });
+
+    const info = await mediaRes.json();
+    if (!info.url) return res.status(400).json({ erro: 'No URL' });
+
+    const fileRes = await fetchComTimeout(info.url, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!fileRes.ok) return res.status(fileRes.status).json({ erro: 'Download error' });
+
+    res.setHeader('Content-Type', info.mime_type || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const buffer = await fileRes.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch(e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// Servir arquivos de mídia salvos localmente
 app.get('/api/media/:filename', (req, res) => {
-  const filename = path.basename(req.params.filename); // previne path traversal
+  const filename = path.basename(req.params.filename);
   const filepath = path.join(MEDIA_DIR, filename);
-  if (!fs.existsSync(filepath)) return res.status(404).json({ erro: 'Mídia não encontrada' });
-  res.setHeader('Cache-Control', 'public, max-age=31536000'); // cache 1 ano
+  if (!fs.existsSync(filepath)) return res.status(404).json({ erro: 'Não encontrada' });
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
   res.sendFile(filepath);
 });
 
@@ -1348,40 +1399,35 @@ app.get('/api/config/n8n', auth, requireRole('admin','gestor'), (req, res) => {
 
 async function fetchMediaMeta(mediaId, token) {
   try {
-    // 1. Busca URL do arquivo na Meta
-    console.log(`   📥 Buscando media ${mediaId}...`);
+    // Busca URL do arquivo na Meta (sem fazer download local)
+    console.log(`   📥 Buscando media info: ${mediaId}`);
     const infoRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${mediaId}`, {
       headers: { Authorization: 'Bearer ' + token }
     });
+
     if (!infoRes.ok) {
       const errText = await infoRes.text();
-      throw new Error(`Meta retornou ${infoRes.status}: ${errText.substring(0,100)}`);
+      console.error(`   ❌ Meta erro ${infoRes.status}: ${errText.substring(0,150)}`);
+      throw new Error(`Meta ${infoRes.status}`);
     }
+
     const info = await infoRes.json();
+    console.log(`   ✅ Media info recebida: mime=${info.mime_type}, url=${info.url ? 'sim' : 'não'}`);
+
     if (!info.url) {
-      console.warn(`   ⚠️ Meta não retornou URL. Resposta:`, JSON.stringify(info).substring(0,200));
-      throw new Error('Meta não retornou URL de mídia');
+      console.warn(`   ⚠️ Resposta Meta:`, JSON.stringify(info).substring(0,200));
+      throw new Error('Sem URL na resposta Meta');
     }
 
-    // 2. Baixa o arquivo
-    console.log(`   📥 Baixando de ${info.url.substring(0,60)}...`);
-    const fileRes = await fetchComTimeout(info.url, {
-      headers: { Authorization: 'Bearer ' + token }
-    });
-    if (!fileRes.ok) throw new Error(`Falha ao baixar: ${fileRes.status}`);
-    const buffer = Buffer.from(await fileRes.arrayBuffer());
-    console.log(`   ✅ Baixado ${(buffer.length/1024).toFixed(1)}KB`);
-
-    // 3. Salva em /data/media/
+    // Retorna URL direto da Meta (válido por ~1 hora)
     const mime = info.mime_type || 'application/octet-stream';
-    const ext = mime.split('/')[1]?.split(';')[0]?.replace('ogg; codecs=opus','ogg') || 'bin';
-    const filename = `${mediaId}.${ext}`;
-    const filepath = path.join(MEDIA_DIR, filename);
-    fs.writeFileSync(filepath, buffer);
-    console.log(`   💾 Salvo: ${filename}`);
-    return { filename, filepath, mime };
+    return {
+      url: info.url,
+      mime: mime,
+      token: token
+    };
   } catch(e) {
-    console.error(`   ❌ fetchMediaMeta erro: ${e.message}`);
+    console.error(`   ❌ fetchMediaMeta: ${e.message}`);
     throw e;
   }
 }

@@ -3830,28 +3830,33 @@ async function openChatMeta(de, nome) {
 function renderConteudoMsg(m) {
   const tipo = m.tipo || 'text';
   const mediaUrl = m.media_url || '';
+  const mediaId = m.media_id || '';
   const texto = m.texto || '';
   const trans = m.transcricao || '';
+  const token = _getAuthToken() || '';
 
-  if (tipo === 'image' && mediaUrl) {
-    return `<img src="${mediaUrl}" style="max-width:220px;max-height:300px;border-radius:8px;display:block;cursor:pointer" onclick="window.open('${mediaUrl}','_blank')" onerror="this.outerHTML='<span style=color:#94a3b8;font-size:12px>📷 Imagem não disponível</span>'">
+  // Se tem URL da Meta, usa proxy com autenticação
+  const proxyUrl = mediaUrl && mediaUrl.includes('scontent') ? `/api/media-proxy/${mediaId}?token=${encodeURIComponent(token)}` : mediaUrl;
+
+  if (tipo === 'image' && proxyUrl) {
+    return `<img src="${proxyUrl}" style="max-width:220px;max-height:300px;border-radius:8px;display:block;cursor:pointer" onclick="window.open('${proxyUrl}','_blank')" onerror="this.outerHTML='<span style=color:#94a3b8;font-size:12px>📷 Indisponível</span>'">
       ${texto && texto !== '[Imagem]' ? `<div style="font-size:12px;margin-top:4px">${escHtml(texto)}</div>` : ''}`;
   }
-  if (tipo === 'audio' && mediaUrl) {
-    return `<audio controls style="max-width:220px;width:100%;display:block"><source src="${mediaUrl}" type="audio/ogg"></audio>
+  if (tipo === 'audio' && proxyUrl) {
+    return `<audio controls style="max-width:220px;width:100%;display:block"><source src="${proxyUrl}"></audio>
       ${trans ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;background:#f3f4f6;padding:4px 8px;border-radius:6px">📝 ${escHtml(trans)}</div>` : ''}`;
   }
-  if (tipo === 'video' && mediaUrl) {
-    return `<video controls style="max-width:220px;max-height:300px;border-radius:8px;display:block"><source src="${mediaUrl}"></video>`;
+  if (tipo === 'video' && proxyUrl) {
+    return `<video controls style="max-width:220px;max-height:300px;border-radius:8px;display:block"><source src="${proxyUrl}"></video>`;
   }
-  if ((tipo === 'document' || tipo === 'file') && mediaUrl) {
-    return `<a href="${mediaUrl}" target="_blank" download style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit;background:#f3f4f6;padding:8px 12px;border-radius:8px">
+  if ((tipo === 'document' || tipo === 'file') && proxyUrl) {
+    return `<a href="${proxyUrl}" target="_blank" download style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit;background:#f3f4f6;padding:8px 12px;border-radius:8px">
       <span style="font-size:24px">📄</span>
       <span style="font-size:12px;text-decoration:underline;word-break:break-all">${escHtml(texto||'Documento')}</span>
     </a>`;
   }
-  if (tipo === 'sticker' && mediaUrl) {
-    return `<img src="${mediaUrl}" style="max-width:100px;border-radius:4px" onerror="this.outerHTML='🎭'">`;
+  if (tipo === 'sticker' && proxyUrl) {
+    return `<img src="${proxyUrl}" style="max-width:100px;border-radius:4px" onerror="this.outerHTML='🎭'">`;
   }
   return escHtml(texto);
 }
