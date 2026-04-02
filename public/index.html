@@ -1994,30 +1994,13 @@ function iniciarSistema(){
     }, 15000);
   }
 
-  // Polling de mensagens WhatsApp Meta e Instagram a cada 8 segundos
+  // Polling de conversas a cada 20s — NÃO re-renderiza mensagens (os timers específicos fazem isso)
   if (!window._wppMetaIntervalId) {
     window._wppMetaIntervalId = setInterval(function(){
       if(!_getAuthToken()) return;
-      // Atualiza lista de conversas
       carregarConversasMeta().catch(function(){});
       carregarConversasInstagram().catch(function(){});
-      // Se chat WhatsApp aberto, recarrega mensagens imediatamente
-      if (uiState.metaChatDe) {
-        api('GET', '/api/whatsapp/mensagens/' + uiState.metaChatDe).then(function(msgs){
-          if (!msgs || !msgs.length) return;
-          S(function(s){ s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[uiState.metaChatDe] = msgs; });
-          renderMsgsMeta(uiState.metaChatDe);
-        }).catch(function(){});
-      }
-      // Se chat Instagram aberto, recarrega mensagens imediatamente
-      if (uiState.instagramChatDe) {
-        api('GET', '/api/instagram/mensagens/' + uiState.instagramChatDe).then(function(msgs){
-          if (!msgs || !msgs.length) return;
-          S(function(s){ s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[uiState.instagramChatDe] = msgs; });
-          renderMsgsMeta(uiState.instagramChatDe, 'instagram');
-        }).catch(function(){});
-      }
-    }, 8000);
+    }, 20000);
   }
 }
 
@@ -4133,6 +4116,9 @@ async function openChatInstagram(de, nome) {
     <div id="transferInfoInstagram" style="padding:8px 12px;background:#f3f4f6;border-bottom:1px solid #e5e7eb;font-size:11px;display:none"></div>
     <div class="msgs" id="msgBox" style="flex:1;overflow-y:auto;padding:12px"></div>
     <div class="msg-inp-row">
+      <button id="micBtnInsta" title="Gravar áudio" style="cursor:pointer;width:42px;height:42px;background:#E1306C;border:none;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px;padding:0;margin:0" onclick="iniciarGravacao('instagram')">🎙️</button>
+      <label title="Enviar arquivo" style="cursor:pointer;width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px" onclick="document.getElementById('fileInputInsta').click()">📎</label>
+      <input type="file" id="fileInputInsta" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx" onchange="enviarMidiaInstagram(this)">
       <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsgInstagram()">
       <button class="send-btn" onclick="sendMsgInstagram()">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -4156,16 +4142,54 @@ async function openChatInstagram(de, nome) {
     }
   } catch(e) { console.error(e); }
 
-  // Polling a cada 5s
+  // Polling a cada 30s — só re-renderiza se houver mensagens NOVAS
   if (window._instagramPollTimer) clearInterval(window._instagramPollTimer);
   window._instagramPollTimer = setInterval(async () => {
     if (uiState.instagramChatDe !== de) { clearInterval(window._instagramPollTimer); return; }
     try {
       const msgs = await api('GET', '/api/instagram/mensagens/' + de);
+      const old = (state.instagramMensagens || {})[de] || [];
+      if (msgs.length > old.length) {
+        S(s => { s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[de] = msgs; });
+        renderMsgsMeta(de, 'instagram');
+      }
+    } catch(e) {}
+  }, 30000);
+}
+
+async function enviarMidiaInstagram(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 25 * 1024 * 1024) { toast('❌ Arquivo muito grande (máx 25MB)', 'error'); input.value = ''; return; }
+  const de = uiState.instagramChatDe;
+  if (!de) { toast('❌ Nenhuma conversa aberta', 'error'); input.value = ''; return; }
+
+  const label = input.previousElementSibling;
+  if (label) label.textContent = '⏳';
+  try {
+    const form = new FormData();
+    form.append('arquivo', file, file.name);
+    form.append('para', de);
+    const token = _getAuthToken();
+    const res = await fetch('/api/instagram/enviar-midia', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: form
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('✅ Arquivo enviado!', 'success');
+      const msgs = await api('GET', '/api/instagram/mensagens/' + de);
       S(s => { s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[de] = msgs; });
       renderMsgsMeta(de, 'instagram');
-    } catch(e) {}
-  }, 5000);
+    } else {
+      toast('❌ ' + (data.erro || 'Falha ao enviar arquivo'), 'error');
+    }
+  } catch(e) {
+    toast('❌ Erro: ' + e.message, 'error');
+  }
+  if (label) label.textContent = '📎';
+  input.value = '';
 }
 
 async function sendMsgInstagram() {
@@ -4348,7 +4372,10 @@ async function enviarMidiaWpp(input) {
   input.value = '';
 }
 
-async function iniciarGravacao() {
+async function iniciarGravacao(canal) {
+  // canal = 'instagram' ou 'whatsapp' (padrão)
+  const _canal = canal || (uiState.instagramChatDe && uiState.activeChat?.startsWith('instagram') ? 'instagram' : 'whatsapp');
+
   if (!window._recorder) {
     try {
       // Verificar suporte
@@ -4361,7 +4388,7 @@ async function iniciarGravacao() {
       // Detectar mimeType suportado automaticamente
       const mimes = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
       const mime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || '';
-      console.log('🎙️ mimeType selecionado:', mime || '(padrão)');
+      console.log('🎙️ mimeType selecionado:', mime || '(padrão)', 'canal:', _canal);
 
       const mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       let audioChunks = [];
@@ -4375,10 +4402,10 @@ async function iniciarGravacao() {
 
         if (blob.size < 100) { toast('❌ Gravação muito curta', 'error'); window._recorder = null; const b = document.getElementById('micBtn') || document.getElementById('micBtn2'); if(b) b.innerHTML='🎙️'; return; }
 
-        const de = uiState.metaChatDe;
+        const de = _canal === 'instagram' ? uiState.instagramChatDe : uiState.metaChatDe;
         if (!de) { toast('❌ Nenhuma conversa aberta', 'error'); window._recorder = null; return; }
 
-        const btn = document.getElementById('micBtn') || document.getElementById('micBtn2');
+        const btn = document.getElementById('micBtnInsta') || document.getElementById('micBtn') || document.getElementById('micBtn2');
         if (btn) { btn.innerHTML = '⏳'; btn.disabled = true; }
 
         try {
@@ -4387,8 +4414,9 @@ async function iniciarGravacao() {
           form.append('arquivo', blob, `audio-${Date.now()}.${ext}`);
           form.append('para', de);
           const token = _getAuthToken();
-          console.log('📤 Enviando áudio para:', de, 'ext:', ext);
-          const res = await fetch('/api/whatsapp/enviar-midia', {
+          const endpoint = _canal === 'instagram' ? '/api/instagram/enviar-midia' : '/api/whatsapp/enviar-midia';
+          console.log('📤 Enviando áudio para:', de, 'canal:', _canal, 'ext:', ext);
+          const res = await fetch(endpoint, {
             method: 'POST',
             headers: { Authorization: 'Bearer ' + token },
             body: form
@@ -4397,9 +4425,15 @@ async function iniciarGravacao() {
           console.log('📥 Resposta:', data);
           if (data.ok) {
             toast('✅ Áudio enviado!', 'success');
-            const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
-            S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
-            renderMsgsMeta(de);
+            if (_canal === 'instagram') {
+              const msgs = await api('GET', '/api/instagram/mensagens/' + de);
+              S(s => { s.instagramMensagens = s.instagramMensagens || {}; s.instagramMensagens[de] = msgs; });
+              renderMsgsMeta(de, 'instagram');
+            } else {
+              const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
+              S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+              renderMsgsMeta(de);
+            }
           } else {
             toast('❌ ' + (data.erro || 'Falha ao enviar áudio'), 'error');
           }

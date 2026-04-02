@@ -1372,6 +1372,94 @@ app.get('/api/instagram/mensagens/:de', auth, (req, res) => {
   res.json(msgs);
 });
 
+// Enviar mídia Instagram
+app.post('/api/instagram/enviar-midia', auth, _multerUpload, async (req, res) => {
+  try {
+    const { para } = req.body;
+    const arquivo = req.file;
+    if (!arquivo) return res.status(400).json({ erro: 'Arquivo não enviado' });
+    if (!para) return res.status(400).json({ erro: 'Destinatário não informado' });
+
+    const conta = db.prepare("SELECT * FROM ig_contas WHERE ativo=1 LIMIT 1").get();
+    if (!conta?.token) return res.status(400).json({ erro: 'Instagram não configurado' });
+
+    let mime = arquivo.mimetype;
+    let filePath = arquivo.path;
+    let nomeArquivo = arquivo.originalname || 'arquivo';
+
+    // Converter webm → mp3 se necessário
+    if (mime && mime.includes('webm')) {
+      const { execSync } = require('child_process');
+      const mp3Path = arquivo.path + '_conv.mp3';
+      try {
+        execSync(`ffmpeg -y -i "${arquivo.path}" -c:a libmp3lame -b:a 128k -ar 44100 "${mp3Path}"`, { timeout: 30000 });
+        filePath = mp3Path;
+        mime = 'audio/mpeg';
+        nomeArquivo = nomeArquivo.replace(/\.(webm|mkv|ogg)$/i, '.mp3');
+        console.log(`🔄 [Instagram] Convertido webm→mp3`);
+      } catch(e) { console.warn('⚠️ ffmpeg falhou:', e.message); }
+    }
+
+    // Determina tipo para Instagram API
+    let attachType = 'file';
+    if (mime.startsWith('image/')) attachType = 'image';
+    else if (mime.startsWith('audio/')) attachType = 'audio';
+    else if (mime.startsWith('video/')) attachType = 'video';
+
+    // Salva localmente e gera URL pública
+    const ext = nomeArquivo.includes('.') ? nomeArquivo.split('.').pop() : 'bin';
+    const localFilename = `ig_${Date.now()}.${ext}`;
+    const localPath = path.join(MEDIA_DIR, localFilename);
+    fs.copyFileSync(filePath, localPath);
+
+    const host = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : `http://localhost:${PORT}`;
+    const publicUrl = `${host}/api/media/${localFilename}`;
+
+    // Envia via Instagram API
+    const body = {
+      recipient: { id: para },
+      message: {
+        attachment: {
+          type: attachType,
+          payload: { url: publicUrl, is_reusable: true }
+        }
+      }
+    };
+
+    const sendRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/me/messages?access_token=${conta.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const sendData = await sendRes.json();
+
+    if (sendData.message_id || sendData.recipient_id) {
+      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+      const ts = dtBrasil.toISOString().slice(0,19).replace('T',' ');
+      const nomeSender = req.user?.nome || 'Atendente';
+      const textoExib = attachType === 'image' ? '[Imagem]' : attachType === 'audio' ? '[Áudio]' : attachType === 'video' ? '[Vídeo]' : nomeArquivo;
+
+      db.prepare(`INSERT INTO ig_mensagens (de, nome, texto, tipo, direcao, criado_em, media_url, media_mime)
+                  VALUES (?,?,?,?,?,'enviada',?,?) ON CONFLICT DO NOTHING`)
+        .run(para, nomeSender, textoExib, attachType, ts, publicUrl, mime);
+
+      res.json({ ok: true });
+    } else {
+      console.error('Instagram enviar-midia erro:', JSON.stringify(sendData));
+      res.status(400).json({ erro: sendData.error?.message || 'Erro ao enviar mídia no Instagram' });
+    }
+
+    try { fs.unlinkSync(arquivo.path); } catch(e) {}
+    try { if (filePath !== arquivo.path) fs.unlinkSync(filePath); } catch(e) {}
+
+  } catch(e) {
+    console.error('Erro /api/instagram/enviar-midia:', e);
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 // Enviar mensagem Instagram
 app.post('/api/instagram/enviar', auth, async (req, res) => {
   try {
