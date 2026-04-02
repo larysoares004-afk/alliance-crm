@@ -1031,47 +1031,55 @@ app.post('/api/instagram/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
-// Proxy para servir mídia da Meta (token como query param para img/audio/video tags)
+// Proxy para servir mídia da Meta (usa token da Meta do banco, não JWT do CRM)
 app.get('/api/media-proxy/:mediaId', async (req, res) => {
   try {
     const mediaId = req.params.mediaId;
-    const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
-    if (!token) {
-      console.warn(`⚠️ Proxy sem token para media ${mediaId}`);
-      return res.status(401).json({ erro: 'Token inválido' });
-    }
+    console.log(`📥 Proxy: mediaId=${mediaId.substring(0,20)}...`);
 
-    console.log(`📥 Proxy: ${mediaId.substring(0,20)}...`);
+    // Busca token da Meta do banco (não do query param que é JWT)
+    const conta = db.prepare('SELECT token FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
+    if (!conta?.token) {
+      console.warn(`⚠️ Nenhum token WhatsApp ativo`);
+      return res.status(401).json({ erro: 'Sem token WhatsApp' });
+    }
+    const metaToken = conta.token;
+
+    // Busca info da mídia na Meta
     const mediaRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${mediaId}`, {
-      headers: { Authorization: 'Bearer ' + token }
+      headers: { Authorization: 'Bearer ' + metaToken }
     });
     if (!mediaRes.ok) {
-      console.warn(`⚠️ Meta retornou ${mediaRes.status}`);
-      return res.status(mediaRes.status).json({ erro: 'Meta error' });
+      console.warn(`⚠️ Meta ${mediaRes.status}: ${await mediaRes.text().then(t => t.substring(0,60))}`);
+      return res.status(mediaRes.status).send('Indisponível');
     }
 
     const info = await mediaRes.json();
     if (!info.url) {
-      console.warn(`⚠️ Meta sem URL: ${JSON.stringify(info).substring(0,100)}`);
-      return res.status(400).json({ erro: 'No URL' });
+      console.warn(`⚠️ Meta sem URL para ${mediaId}`);
+      return res.status(400).send('Indisponível');
     }
 
+    // Faz download do arquivo
     const fileRes = await fetchComTimeout(info.url, {
-      headers: { Authorization: 'Bearer ' + token }
+      headers: { Authorization: 'Bearer ' + metaToken }
     });
     if (!fileRes.ok) {
-      console.warn(`⚠️ Download Meta ${fileRes.status}`);
-      return res.status(fileRes.status).json({ erro: 'Download error' });
+      console.warn(`⚠️ Download ${fileRes.status}`);
+      return res.status(fileRes.status).send('Indisponível');
     }
 
-    res.setHeader('Content-Type', info.mime_type || 'application/octet-stream');
+    // Retorna com headers corretos
+    const mime = info.mime_type || 'application/octet-stream';
+    res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=3600');
+
     const buffer = await fileRes.arrayBuffer();
     console.log(`✅ Proxy: ${(buffer.byteLength/1024).toFixed(1)}KB enviado`);
     res.send(Buffer.from(buffer));
   } catch(e) {
-    console.error(`❌ Proxy erro: ${e.message}`);
-    res.status(500).json({ erro: e.message });
+    console.error(`❌ Proxy: ${e.message}`);
+    res.status(500).send('Indisponível');
   }
 });
 

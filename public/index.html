@@ -3833,10 +3833,9 @@ function renderConteudoMsg(m) {
   const mediaId = m.media_id || '';
   const texto = m.texto || '';
   const trans = m.transcricao || '';
-  const token = _getAuthToken() || '';
 
-  // Se tem URL da Meta, usa proxy com autenticação
-  const proxyUrl = mediaUrl && mediaUrl.includes('scontent') ? `/api/media-proxy/${mediaId}?token=${encodeURIComponent(token)}` : mediaUrl;
+  // Se tem mediaId, usa proxy (proxy busca token do banco)
+  const proxyUrl = mediaId ? `/api/media-proxy/${mediaId}` : mediaUrl;
 
   if (tipo === 'image' && proxyUrl) {
     return `<img src="${proxyUrl}" style="max-width:220px;max-height:300px;border-radius:8px;display:block;cursor:pointer" onclick="window.open('${proxyUrl}','_blank')" onerror="this.outerHTML='<span style=color:#94a3b8;font-size:12px>📷 Indisponível</span>'">
