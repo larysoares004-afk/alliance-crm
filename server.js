@@ -24,6 +24,7 @@ const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
 const path       = require('path');
 const fs         = require('fs');
+let multer; try { multer = require('multer'); } catch(e) { multer = null; }
 
 const app  = express();
 app.set('trust proxy', 1); // Railway usa proxy — necessário para rate-limit e IPs corretos
@@ -182,6 +183,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS wpp_mensagens (
   criado_em   TEXT DEFAULT (datetime('now','localtime'))
 )`);
 try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN conta_id TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN media_id TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN media_url TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN media_mime TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE wpp_mensagens ADD COLUMN transcricao TEXT"); } catch(e) {}
+
+// Diretório persistente de mídia
+const MEDIA_DIR = '/data/media';
+try { if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch(e) {}
 
 // Tabela de transferências de conversas
 db.exec(`CREATE TABLE IF NOT EXISTS wpp_transferencias (
@@ -764,11 +773,17 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       const de    = msg.from;
       const wamid = msg.id;
       const tipo  = msg.type || 'text';
+      // Extrai media_id e nome do arquivo se for mídia
+      const mediaObj = msg[tipo] || {};
+      const mediaId  = mediaObj.id || null;
+      const mediaMime = mediaObj.mime_type || null;
+      const docNome  = mediaObj.filename || null;
       const texto = tipo === 'text' ? msg.text?.body :
-                    tipo === 'image' ? '[Imagem]' :
+                    tipo === 'image' ? (mediaObj.caption || '[Imagem]') :
                     tipo === 'audio' ? '[Áudio]' :
-                    tipo === 'document' ? '[Documento]' :
-                    tipo === 'video' ? '[Vídeo]' : '[Mensagem]';
+                    tipo === 'document' ? (docNome || '[Documento]') :
+                    tipo === 'video' ? (mediaObj.caption || '[Vídeo]') :
+                    tipo === 'sticker' ? '[Figurinha]' : '[Mensagem]';
 
       // Pega nome do contato se disponível
       const contatos = value.contacts || [];
@@ -784,10 +799,10 @@ app.post('/api/whatsapp/webhook', (req, res) => {
 
       try {
         console.log(`   [${msg.id}] Processando: de=${de}, nome=${nome}, tipo=${tipo}, texto="${texto}"`);
-        const result = db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em)
-                    VALUES (?,?,?,?,?,'recebida',?)`).run(wamid, de, nome, texto, tipo, criadoEm);
+        const result = db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em, media_id, media_mime)
+                    VALUES (?,?,?,?,?,'recebida',?,?,?)`).run(wamid, de, nome, texto, tipo, criadoEm, mediaId, mediaMime);
         if (result.changes > 0) {
-          console.log(`   ✅ SALVA: ${de} → "${texto}"`);
+          console.log(`   ✅ SALVA: ${de} → "${texto}" (tipo=${tipo})`);
           // Auto-criar lead no CRM se não existir para este número WhatsApp
           try {
             const leadExiste = db.prepare("SELECT id FROM leads WHERE telefone=? OR telefone LIKE ?")
@@ -801,6 +816,36 @@ app.post('/api/whatsapp/webhook', (req, res) => {
           } catch(eL) { console.warn('Erro ao auto-criar lead WhatsApp:', eL.message); }
           // Disparar para N8N automaticamente
           setImmediate(() => dispararParaN8N('whatsapp', de, nome, texto));
+          // Baixar mídia de forma assíncrona
+          if (mediaId && ['image','audio','video','document','sticker'].includes(tipo)) {
+            setImmediate(async () => {
+              try {
+                console.log(`   ⏳ [MÍDIA] Iniciando download: tipo=${tipo}, mediaId=${mediaId}`);
+                const phoneNumId = value?.metadata?.phone_number_id;
+                const contaM = phoneNumId
+                  ? db.prepare('SELECT token FROM wpp_contas WHERE phone_id=? AND ativo=1').get(phoneNumId)
+                  : db.prepare('SELECT token FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
+                const tokenM = contaM?.token;
+                if (!tokenM) {
+                  console.warn(`   ⚠️  [MÍDIA] Token não encontrado para phone_id=${phoneNumId}`);
+                  return;
+                }
+                const { filename, filepath, mime } = await fetchMediaMeta(mediaId, tokenM);
+                const localUrl = '/api/media/' + filename;
+                db.prepare('UPDATE wpp_mensagens SET media_url=?, media_mime=? WHERE wamid=?').run(localUrl, mime, wamid);
+                console.log(`   ✅ [MÍDIA] Salva no banco: ${filename}`);
+                // Transcrever áudio automaticamente se OpenAI configurado
+                if (tipo === 'audio' && process.env.OPENAI_API_KEY) {
+                  console.log(`   🎯 [ÁUDIO] Iniciando transcrição...`);
+                  const trans = await transcreverAudio(filepath, mime);
+                  if (trans) {
+                    db.prepare('UPDATE wpp_mensagens SET transcricao=? WHERE wamid=?').run(trans, wamid);
+                    console.log(`   ✅ [ÁUDIO] Transcrição concluída: "${trans.substring(0,60)}..."`);
+                  }
+                }
+              } catch(eM) { console.error(`   ❌ [MÍDIA] Erro ao processar: ${eM.message}`); }
+            });
+          }
         } else {
           console.warn(`   ⚠️  IGNORADA (já existe): wamid=${wamid}`);
         }
@@ -962,6 +1007,106 @@ app.post('/api/instagram/webhook', (req, res) => {
     });
   } catch(e) { console.error('❌ Erro webhook instagram:', e.message); }
   res.sendStatus(200);
+});
+
+// Servir arquivos de mídia salvos localmente (sem auth — filenames são IDs internos da Meta)
+app.get('/api/media/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename); // previne path traversal
+  const filepath = path.join(MEDIA_DIR, filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ erro: 'Mídia não encontrada' });
+  res.setHeader('Cache-Control', 'public, max-age=31536000'); // cache 1 ano
+  res.sendFile(filepath);
+});
+
+// Enviar mídia via WhatsApp (imagem, áudio, documento, vídeo)
+const _multerUpload = multer
+  ? multer({ dest: '/tmp/wpp_uploads/', limits: { fileSize: 25 * 1024 * 1024 } }).single('arquivo')
+  : (req, res, next) => res.status(501).json({ erro: 'Upload não disponível (multer não instalado)' });
+
+app.post('/api/whatsapp/enviar-midia', auth, _multerUpload, async (req, res) => {
+  try {
+    const { para, contaId } = req.body;
+    const arquivo = req.file;
+    if (!arquivo) return res.status(400).json({ erro: 'Arquivo não enviado' });
+    if (!para) return res.status(400).json({ erro: 'Destinatário não informado' });
+
+    let conta = contaId
+      ? db.prepare('SELECT * FROM wpp_contas WHERE id=? AND ativo=1').get(contaId)
+      : db.prepare('SELECT * FROM wpp_contas WHERE ativo=1 ORDER BY criado_em LIMIT 1').get();
+    if (!conta?.token) return res.status(400).json({ erro: 'WhatsApp não configurado' });
+
+    const { token, phone_id: phoneId } = conta;
+    const mime = arquivo.mimetype;
+    const nomeArquivo = arquivo.originalname || 'arquivo';
+
+    // 1. Upload da mídia para Meta
+    const fileBuffer = fs.readFileSync(arquivo.path);
+    const blob = new Blob([fileBuffer], { type: mime });
+    const formUpload = new FormData();
+    formUpload.append('file', blob, nomeArquivo);
+    formUpload.append('messaging_product', 'whatsapp');
+    formUpload.append('type', mime);
+
+    const uploadRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${phoneId}/media`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: formUpload
+    });
+    const uploadData = await uploadRes.json();
+    if (!uploadData.id) {
+      fs.unlinkSync(arquivo.path);
+      return res.status(400).json({ erro: uploadData.error?.message || 'Falha no upload para Meta' });
+    }
+    const mediaIdUp = uploadData.id;
+
+    // 2. Determina tipo da mensagem
+    let msgType = 'document';
+    if (mime.startsWith('image/')) msgType = 'image';
+    else if (mime.startsWith('audio/') || mime.includes('ogg') || mime.includes('mpeg')) msgType = 'audio';
+    else if (mime.startsWith('video/')) msgType = 'video';
+
+    // 3. Envia mensagem
+    const msgBody = { messaging_product: 'whatsapp', to: para.replace(/\D/g, ''), type: msgType };
+    if (msgType === 'image') msgBody.image = { id: mediaIdUp };
+    else if (msgType === 'audio') msgBody.audio = { id: mediaIdUp };
+    else if (msgType === 'video') msgBody.video = { id: mediaIdUp };
+    else msgBody.document = { id: mediaIdUp, filename: nomeArquivo };
+
+    const sendRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(msgBody)
+    });
+    const sendData = await sendRes.json();
+
+    if (sendData.messages?.[0]?.id) {
+      const wamidUp = sendData.messages[0].id;
+      const dtBrasil = new Date(Date.now() - (3 * 60 * 60 * 1000));
+      const ts = dtBrasil.toISOString().slice(0,19).replace('T',' ');
+      const nomeSender = req.user?.nome || 'Atendente';
+      const textoExib = msgType === 'image' ? '[Imagem]' : msgType === 'audio' ? '[Áudio]' : msgType === 'video' ? '[Vídeo]' : nomeArquivo;
+
+      // Salva localmente
+      const ext = nomeArquivo.includes('.') ? nomeArquivo.split('.').pop() : mime.split('/')[1] || 'bin';
+      const localFilename = `${mediaIdUp}.${ext}`;
+      const localPath = path.join(MEDIA_DIR, localFilename);
+      fs.copyFileSync(arquivo.path, localPath);
+      const localUrl = '/api/media/' + localFilename;
+
+      db.prepare(`INSERT INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em, media_id, media_url, media_mime)
+                  VALUES (?,?,?,?,?,'enviada',?,?,?,?)`)
+        .run(wamidUp, para.replace(/\D/g, ''), nomeSender, textoExib, msgType, ts, mediaIdUp, localUrl, mime);
+
+      res.json({ ok: true });
+    } else {
+      res.status(400).json({ erro: sendData.error?.message || 'Erro ao enviar mídia' });
+    }
+
+    try { fs.unlinkSync(arquivo.path); } catch(e) {}
+  } catch(e) {
+    console.error('❌ Erro enviar-midia:', e.message);
+    res.status(500).json({ erro: e.message });
+  }
 });
 
 // Buscar conversas (lista de contatos)
@@ -1196,6 +1341,73 @@ app.get('/api/config/n8n', auth, requireRole('admin','gestor'), (req, res) => {
   const cfg = db.prepare("SELECT valor FROM config WHERE chave='n8n_config'").get();
   res.json(cfg ? JSON.parse(cfg.valor) : {});
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// MÍDIA — download da Meta e transcrição de áudio
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function fetchMediaMeta(mediaId, token) {
+  try {
+    // 1. Busca URL do arquivo na Meta
+    console.log(`   📥 Buscando media ${mediaId}...`);
+    const infoRes = await fetchComTimeout(`https://graph.facebook.com/v20.0/${mediaId}`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!infoRes.ok) {
+      const errText = await infoRes.text();
+      throw new Error(`Meta retornou ${infoRes.status}: ${errText.substring(0,100)}`);
+    }
+    const info = await infoRes.json();
+    if (!info.url) {
+      console.warn(`   ⚠️ Meta não retornou URL. Resposta:`, JSON.stringify(info).substring(0,200));
+      throw new Error('Meta não retornou URL de mídia');
+    }
+
+    // 2. Baixa o arquivo
+    console.log(`   📥 Baixando de ${info.url.substring(0,60)}...`);
+    const fileRes = await fetchComTimeout(info.url, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!fileRes.ok) throw new Error(`Falha ao baixar: ${fileRes.status}`);
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    console.log(`   ✅ Baixado ${(buffer.length/1024).toFixed(1)}KB`);
+
+    // 3. Salva em /data/media/
+    const mime = info.mime_type || 'application/octet-stream';
+    const ext = mime.split('/')[1]?.split(';')[0]?.replace('ogg; codecs=opus','ogg') || 'bin';
+    const filename = `${mediaId}.${ext}`;
+    const filepath = path.join(MEDIA_DIR, filename);
+    fs.writeFileSync(filepath, buffer);
+    console.log(`   💾 Salvo: ${filename}`);
+    return { filename, filepath, mime };
+  } catch(e) {
+    console.error(`   ❌ fetchMediaMeta erro: ${e.message}`);
+    throw e;
+  }
+}
+
+async function transcreverAudio(filepath, mime) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const fileBuffer = fs.readFileSync(filepath);
+    const blob = new Blob([fileBuffer], { type: mime });
+    const form = new FormData();
+    form.append('file', blob, path.basename(filepath));
+    form.append('model', 'whisper-1');
+    form.append('language', 'pt');
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey },
+      body: form
+    });
+    const data = await res.json();
+    return data.text || null;
+  } catch(e) {
+    console.warn('⚠️ Transcrição falhou:', e.message);
+    return null;
+  }
+}
 
 // Função para disparar mensagem para o N8N automaticamente
 async function dispararParaN8N(canal, de, nome, texto) {

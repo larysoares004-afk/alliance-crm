@@ -3790,6 +3790,8 @@ async function openChatMeta(de, nome) {
     <div id="transferInfo" style="padding:8px 12px;background:#f0f9ff;border-bottom:1px solid #e0e7ff;font-size:11px;display:none"></div>
     <div class="msgs" id="msgBox" style="flex:1;overflow-y:auto;padding:12px"></div>
     <div class="msg-inp-row">
+      <label title="Enviar arquivo" style="cursor:pointer;width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px" onclick="document.getElementById('fileInputWpp').click()">📎</label>
+      <input type="file" id="fileInputWpp" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="enviarMidiaWpp(this)">
       <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsg()">
       <button class="send-btn" onclick="sendMsg()">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -3825,6 +3827,35 @@ async function openChatMeta(de, nome) {
   }, 5000);
 }
 
+function renderConteudoMsg(m) {
+  const tipo = m.tipo || 'text';
+  const mediaUrl = m.media_url || '';
+  const texto = m.texto || '';
+  const trans = m.transcricao || '';
+
+  if (tipo === 'image' && mediaUrl) {
+    return `<img src="${mediaUrl}" style="max-width:220px;max-height:300px;border-radius:8px;display:block;cursor:pointer" onclick="window.open('${mediaUrl}','_blank')" onerror="this.outerHTML='<span style=color:#94a3b8;font-size:12px>📷 Imagem não disponível</span>'">
+      ${texto && texto !== '[Imagem]' ? `<div style="font-size:12px;margin-top:4px">${escHtml(texto)}</div>` : ''}`;
+  }
+  if (tipo === 'audio' && mediaUrl) {
+    return `<audio controls style="max-width:220px;width:100%;display:block"><source src="${mediaUrl}" type="audio/ogg"></audio>
+      ${trans ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;background:#f3f4f6;padding:4px 8px;border-radius:6px">📝 ${escHtml(trans)}</div>` : ''}`;
+  }
+  if (tipo === 'video' && mediaUrl) {
+    return `<video controls style="max-width:220px;max-height:300px;border-radius:8px;display:block"><source src="${mediaUrl}"></video>`;
+  }
+  if ((tipo === 'document' || tipo === 'file') && mediaUrl) {
+    return `<a href="${mediaUrl}" target="_blank" download style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit;background:#f3f4f6;padding:8px 12px;border-radius:8px">
+      <span style="font-size:24px">📄</span>
+      <span style="font-size:12px;text-decoration:underline;word-break:break-all">${escHtml(texto||'Documento')}</span>
+    </a>`;
+  }
+  if (tipo === 'sticker' && mediaUrl) {
+    return `<img src="${mediaUrl}" style="max-width:100px;border-radius:4px" onerror="this.outerHTML='🎭'">`;
+  }
+  return escHtml(texto);
+}
+
 function renderMsgsMeta(de, tipo='whatsapp') {
   const msgStore = tipo === 'instagram' ? state.instagramMensagens : state.metaMensagens;
   const msgs = (msgStore || {})[de] || [];
@@ -3839,7 +3870,7 @@ function renderMsgsMeta(de, tipo='whatsapp') {
   box.innerHTML = msgsSorted.map(m => {
     const enviada = m.direcao === 'enviada';
     const hora = (m.criado_em||'').slice(11,16);
-    const nomeSender = m.nome || (enviada ? 'Você' : 'Cliente Instagram');
+    const nomeSender = m.nome || (enviada ? 'Você' : 'Cliente');
     const bgColor = isInstagram ? (enviada ? '#e0f2fe' : '#fff') : (enviada ? '#dcf8c6' : '#fff');
     const align = enviada ? 'flex-end' : 'flex-start';
     const borderRadius = enviada ? '12px 12px 2px 12px' : '12px 12px 12px 2px';
@@ -3847,7 +3878,7 @@ function renderMsgsMeta(de, tipo='whatsapp') {
     return `<div style="margin:4px 8px;display:flex;flex-direction:column;align-items:${align}">
       <div style="max-width:80%;background:${bgColor};border-radius:${borderRadius};padding:8px 12px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.1)">
         ${!enviada ? `<div style="font-weight:700;font-size:11px;color:#6366f1;margin-bottom:3px">${escHtml(nomeSender)}</div>` : ''}
-        <div>${escHtml(m.texto||'')}</div>
+        <div>${renderConteudoMsg(m)}</div>
         <div style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right">${hora}</div>
       </div>
     </div>`;
@@ -4239,6 +4270,8 @@ function openChat(id, name, phone, accountName=''){
     </div>
     <div class="msgs" id="msgBox"></div>
     <div class="msg-inp-row">
+      <label title="Enviar arquivo" style="cursor:pointer;width:36px;height:36px;background:#f1f5f9;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px" onclick="document.getElementById('fileInputWpp').click()">📎</label>
+      <input type="file" id="fileInputWpp" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="enviarMidiaWpp(this)">
       <input type="text" class="msg-inp" id="msgInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter')sendMsg()">
       <button class="send-btn" onclick="sendMsg()">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -4261,6 +4294,42 @@ function renderMsgs(){
     </div>`;
   }).join('');
   box.scrollTop=box.scrollHeight;
+}
+
+async function enviarMidiaWpp(input) {
+  const de = uiState.metaChatDe;
+  if (!de || !input.files[0]) return;
+  const file = input.files[0];
+  const maxSize = 25 * 1024 * 1024;
+  if (file.size > maxSize) { toast('Arquivo muito grande (máx 25MB)', 'error'); input.value = ''; return; }
+
+  const label = document.querySelector('label[onclick*="fileInputWpp"]');
+  if (label) label.textContent = '⏳';
+
+  try {
+    const form = new FormData();
+    form.append('arquivo', file, file.name);
+    form.append('para', de);
+    const token = _getAuthToken();
+    const res = await fetch('/api/whatsapp/enviar-midia', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: form
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('Arquivo enviado!', 'success');
+      const msgs = await api('GET', '/api/whatsapp/mensagens/' + de);
+      S(s => { s.metaMensagens = s.metaMensagens || {}; s.metaMensagens[de] = msgs; });
+      renderMsgsMeta(de);
+    } else {
+      toast('Erro: ' + (data.erro || 'Falha ao enviar'), 'error');
+    }
+  } catch(e) {
+    toast('Erro ao enviar arquivo: ' + e.message, 'error');
+  }
+  if (label) label.textContent = '📎';
+  input.value = '';
 }
 
 function sendMsg(){
