@@ -778,6 +778,11 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       const mediaId  = mediaObj.id || null;
       const mediaMime = mediaObj.mime_type || null;
       const docNome  = mediaObj.filename || null;
+
+      // DEBUG
+      if (tipo === 'audio' || msg.text?.body?.includes('Áudio')) {
+        console.log(`🎵 ÁUDIO DETECTADO: tipo=${tipo}, mediaId=${mediaId?.substring(0,20)}, mime=${mediaMime}, objeto=${JSON.stringify(mediaObj).substring(0,100)}`);
+      }
       const texto = tipo === 'text' ? msg.text?.body :
                     tipo === 'image' ? (mediaObj.caption || '[Imagem]') :
                     tipo === 'audio' ? '[Áudio]' :
@@ -798,11 +803,11 @@ app.post('/api/whatsapp/webhook', (req, res) => {
       const criadoEm = `${Y}-${M}-${D} ${H}:${Mi}:${S}`;
 
       try {
-        console.log(`   [${msg.id}] Processando: de=${de}, nome=${nome}, tipo=${tipo}, texto="${texto}"`);
+        console.log(`   [${msg.id}] Processando: de=${de}, nome=${nome}, tipo=${tipo}, texto="${texto}", mediaId=${mediaId?.substring(0,20)}`);
         const result = db.prepare(`INSERT OR IGNORE INTO wpp_mensagens (wamid, de, nome, texto, tipo, direcao, criado_em, media_id, media_mime)
                     VALUES (?,?,?,?,?,'recebida',?,?,?)`).run(wamid, de, nome, texto, tipo, criadoEm, mediaId, mediaMime);
         if (result.changes > 0) {
-          console.log(`   ✅ SALVA: ${de} → "${texto}" (tipo=${tipo})`);
+          console.log(`   ✅ SALVA: ${de} → "${texto}" (tipo=${tipo}, mediaId=${mediaId?.substring(0,20)}`);
           // Auto-criar lead no CRM se não existir para este número WhatsApp
           try {
             const leadExiste = db.prepare("SELECT id FROM leads WHERE telefone=? OR telefone LIKE ?")
@@ -1201,6 +1206,17 @@ app.get('/api/whatsapp/conversas', auth, (req, res) => {
     ORDER BY ultima DESC
   `).all();
   res.json(rows);
+});
+
+// DEBUG: Listar áudios
+app.get('/api/debug/audios', (req, res) => {
+  try {
+    const audios = db.prepare(`
+      SELECT id, de, nome, texto, tipo, media_id, media_mime FROM wpp_mensagens
+      WHERE tipo = 'audio' ORDER BY criado_em DESC LIMIT 10
+    `).all();
+    res.json({ audios, total: audios.length });
+  } catch(e) { res.status(500).json({ erro: e.message }); }
 });
 
 // Buscar mensagens de um contato

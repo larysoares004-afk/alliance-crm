@@ -3838,6 +3838,11 @@ function renderConteudoMsg(m) {
   const texto = m.texto || '';
   const trans = m.transcricao || '';
 
+  // DEBUG
+  if (tipo === 'audio' || texto.includes('Áudio')) {
+    console.log(`🎵 renderConteudoMsg - tipo=${tipo}, mediaId=${mediaId?.substring(0,20)}, texto="${texto}"`);
+  }
+
   // Se tem mediaId, usa proxy (proxy busca token do banco)
   const proxyUrl = mediaId ? `/api/media-proxy/${mediaId}` : mediaUrl;
 
@@ -3845,8 +3850,11 @@ function renderConteudoMsg(m) {
     return `<img src="${proxyUrl}" style="max-width:220px;max-height:300px;border-radius:8px;display:block;cursor:pointer" onclick="window.open('${proxyUrl}','_blank')" onerror="this.outerHTML='<span style=color:#94a3b8;font-size:12px>📷 Indisponível</span>'">
       ${texto && texto !== '[Imagem]' ? `<div style="font-size:12px;margin-top:4px">${escHtml(texto)}</div>` : ''}`;
   }
-  if (tipo === 'audio' && proxyUrl) {
-    return `<audio controls style="width:200px;height:32px;display:block;margin:4px 0"><source src="${proxyUrl}" type="audio/webm"></audio>${trans ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;background:#f3f4f6;padding:4px 8px;border-radius:6px">📝 ${escHtml(trans)}</div>` : ''}`;
+  if (tipo === 'audio') {
+    if (proxyUrl) {
+      return `<audio controls style="width:200px;height:32px;display:block;margin:4px 0"><source src="${proxyUrl}" type="audio/webm"></audio>${trans ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;background:#f3f4f6;padding:4px 8px;border-radius:6px">📝 ${escHtml(trans)}</div>` : ''}`;
+    }
+    return `<div style="background:#f3f4f6;padding:8px 12px;border-radius:8px;color:#666;font-size:12px">🔊 Áudio (processando...)</div>`;
   }
   if (tipo === 'video' && proxyUrl) {
     return `<video controls style="max-width:220px;max-height:300px;border-radius:8px;display:block"><source src="${proxyUrl}"></video>`;
@@ -6944,17 +6952,7 @@ function instalarApp() {
       if(e.key==='F12' || (e.ctrlKey&&e.shiftKey&&['I','J','C'].includes(e.key)) || (e.ctrlKey&&e.key==='U')) e.preventDefault();
     });
   }
-  // Anti-screenshot via console
-  const _toString = Function.prototype.toString;
-  let devtools = {open: false};
-  setInterval(()=>{
-    const t = performance.now();
-    debugger;
-    if(performance.now()-t > 100 && !devtools.open){
-      devtools.open = true;
-      // Silencioso — não interrompe admin legítimo
-    } else { devtools.open = false; }
-  }, 5000);
+  // Anti-screenshot removido para não travar execução
 })();
 </script>
 
