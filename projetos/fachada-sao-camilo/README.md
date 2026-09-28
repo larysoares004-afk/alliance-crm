@@ -63,3 +63,5 @@ Outros itens:
 
 | Arquivo | Data | Local / fachada | Observação |
 |---|---|---|---|
+| `2026-09-28_ranulfo_01_geral-marquise.jpg` | 28/09/26 | Rua Eng. Ranulfo P. Lima — vista geral em diagonal, marquise vermelha e 4 pavimentos | Marquise metálica com pintura vermelha desbotada/manchada, ganchos soltos, borda da chapa descolando na face inferior; reboco texturizado bege com sujeira sob a cornija; caixilhos de ferro com telas, alguns com corrosão |
+| `2026-09-28_ranulfo_02_frontal-marquise.jpg` | 28/09/26 | Rua Eng. Ranulfo P. Lima — vista frontal dos pavimentos superiores | Fissuras no reboco (lado direito); escorrimento/sujeira no topo e na platibanda; peitoris moldados existentes; telas de proteção tortas/soltas em janelas do 2º pav.; vidros foscos em alguns vãos; forro sob a marquise com trinca |
