@@ -65,3 +65,20 @@ Outros itens:
 |---|---|---|---|
 | `2026-09-28_ranulfo_01_geral-marquise.jpg` | 28/09/26 | Rua Eng. Ranulfo P. Lima — vista geral em diagonal, marquise vermelha e 4 pavimentos | Marquise metálica com pintura vermelha desbotada/manchada, ganchos soltos, borda da chapa descolando na face inferior; reboco texturizado bege com sujeira sob a cornija; caixilhos de ferro com telas, alguns com corrosão |
 | `2026-09-28_ranulfo_02_frontal-marquise.jpg` | 28/09/26 | Rua Eng. Ranulfo P. Lima — vista frontal dos pavimentos superiores | Fissuras no reboco (lado direito); escorrimento/sujeira no topo e na platibanda; peitoris moldados existentes; telas de proteção tortas/soltas em janelas do 2º pav.; vidros foscos em alguns vãos; forro sob a marquise com trinca |
+
+## Levantamento de áreas (estimativa a partir do projeto executivo R02 completo, escala 1:75)
+
+Medido em 08/10/26 sobre `referencias/Sao_Camilo_Fachada_Rev02_Completo.pdf`. Precisão estimada ±5–8% (medição por cotas + leitura da planta).
+
+| Fachada | Área c/ janelas (Fulget + vãos) | Vãos (janelas, portas, vidros) | Fulget cinza médio líquido |
+|---|---|---|---|
+| Vista 01 – Interna | ≈ 247 m² | ≈ 36 m² + ACM lateral 6 m² | ≈ 200 m² |
+| Vista 02 – R. Paulo Bregaro | ≈ 619 m² | ≈ 131 m² + tijolo de vidro ≈ 15 m² | ≈ 473 m² |
+| Vista 03 – R. Eng. Ranulfo P. Lima | ≈ 426 m² | ≈ 129 m² | ≈ 297 m² |
+| Vista 04 – Interna | ≈ 198 m² | ≈ 63 m² (inclui vidro térreo ≈ 40 m²) | ≈ 135 m² |
+| Vista 05 – Interna | ≈ 264 m² | ≈ 56 m² | ≈ 208 m² |
+| Vista 06 – Interna | ≈ 170 m² | ≈ 23 m² | ≈ 147 m² |
+| Muros externos (Paulo Bregaro + Ranulfo) | ≈ 203 m² | — | ≈ 203 m² |
+| **Total** | **≈ 2.125 m²** | **≈ 455 m²** | **≈ 1.665 m²** |
+
+Planilha do cliente: Fulget cinza médio 1.830,40 m² + torre 53,83 m² = 1.884,25 m².
