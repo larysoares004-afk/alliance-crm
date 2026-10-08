@@ -82,3 +82,25 @@ Medido em 08/10/26 sobre `referencias/Sao_Camilo_Fachada_Rev02_Completo.pdf`. Pr
 | **Total** | **≈ 2.125 m²** | **≈ 455 m²** | **≈ 1.665 m²** |
 
 Planilha do cliente: Fulget cinza médio 1.830,40 m² + torre 53,83 m² = 1.884,25 m².
+
+## Chapa perfurada em ferro (moeda) — conferência do item 7.04 (planilha: 80 m²)
+
+Estimativa (08/10/26), caixas = frente + 2 laterais + tampa; bonecas = frente + 2 laterais com profundidade assumida de 0,30 m (não cotada no projeto).
+
+| Vista | Elemento | Medidas (L × A × P) | Área |
+|---|---|---|---|
+| 02 | Caixa condensadora | 0,90 × 1,00 × 0,65 | 2,8 m² |
+| 02 | Caixa 3 condensadoras | 3,22 × 1,19 × 0,61 | 7,2 m² |
+| 02 | Caixa 2 condensadoras | 2,05 × 1,19 × 0,61 | 5,1 m² |
+| 05 | Caixa condensadora (3º pav.) | 0,90 × 1,00 × 0,60 | 2,6 m² |
+| 05 | Caixa condensadora (DET.07) | 0,90 × 1,00 × 0,65 | 2,8 m² |
+| 05 | Caixa 2 condensadoras | 2,30 × 1,00 × 0,61 | 4,9 m² |
+| 05 | Caixa chaminé | 0,70 × 0,75 × 0,43 | 1,5 m² |
+| 02 | Bonecas verticais (0,62×13,31; 0,30×11,18; 0,30×2,29) + horizontais (3,76 m e ~7,0 m) | | ≈ 38 m² |
+| 05 | Bonecas verticais (0,22×10,55; 0,34×10,6) + complemento chaminé | | ≈ 18 m² |
+| 06 | Boneca vertical (~0,40×13,6) + bonecas do 1º pav. + fundo perfurado DET.07 | | ≈ 21 m² |
+| | **Caixas de condensadoras** | | **≈ 27 m²** |
+| | **Bonecas** | | **≈ 77 m²** |
+| | **Total** | | **≈ 104 m²** (só frentes: ≈ 42 m²) |
+
+Não incluídas: chapas perfuradas existentes a manter (frente da floreira, Vista 05).
